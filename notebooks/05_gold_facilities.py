@@ -1,8 +1,16 @@
 # Databricks notebook source
 # MAGIC %md
 # MAGIC # 05 — Gold facilities
-# MAGIC Join silver.facilities_clean ⊕ silver.contradictions ⊕ silver.trust + add `h3_6`,
-# MAGIC `h3_8`, `st_geom`. Powers the map and Genie.
+# MAGIC Join silver.facilities_clean ⊕ silver.contradictions ⊕ silver.trust + add
+# MAGIC `h3_6`, `h3_8`, `st_geom_wkt`. Powers the map and Genie.
+# MAGIC
+# MAGIC Geometry is persisted as WKT (a STRING) rather than as the native GEOMETRY
+# MAGIC type because:
+# MAGIC   1. serverless `display()` cannot render GEOMETRY columns,
+# MAGIC   2. Genie and downstream `SELECT *` queries break on it,
+# MAGIC   3. the lat/lon doubles already cover 99% of needs; `tools/geo.py` builds
+# MAGIC      `ST_Point(longitude, latitude)` on the fly anyway.
+# MAGIC Hydrate with `ST_GeomFromText(st_geom_wkt)` when geometry is needed.
 
 # COMMAND ----------
 import sys
@@ -50,7 +58,7 @@ SELECT
   CASE WHEN s.latitude IS NOT NULL AND s.longitude IS NOT NULL
        THEN h3_h3tostring(h3_longlatash3(s.longitude, s.latitude, 8)) END AS h3_8,
   CASE WHEN s.latitude IS NOT NULL AND s.longitude IS NOT NULL
-       THEN ST_Point(s.longitude, s.latitude) END AS st_geom
+       THEN ST_AsText(ST_Point(s.longitude, s.latitude)) END AS st_geom_wkt
 FROM {SC} s
 LEFT JOIN {TS}  t USING (facility_id)
 LEFT JOIN agg   a USING (facility_id)
@@ -62,7 +70,7 @@ COMMENTS = {
     "flags":       "Array of struct{rule_id, severity, message, evidence, citation_column}.",
     "h3_6":        "H3 hex id (string) at resolution 6. Use for state/district-level density maps.",
     "h3_8":        "H3 hex id (string) at resolution 8. Use for radius search and street-level maps.",
-    "st_geom":     "ST_Point(longitude, latitude) for native ST_DistanceSpheroid radius queries.",
+    "st_geom_wkt": "WKT (well-known-text) representation of ST_Point(longitude, latitude). Hydrate with ST_GeomFromText() when geometry is needed; the doubles latitude/longitude are usually enough.",
 }
 for c, txt in COMMENTS.items():
     safe = txt.replace("'", "''")

@@ -79,7 +79,7 @@ flowchart TD
     SC --> ST[(silver_facilities_text<br/>CDF enabled · embedding source)]
     SC --> CT[(silver_contradictions<br/>R1–R8 long form)]
     SC --> CL[(silver_claims_long<br/>per-claim explosion)]
-    ST & CT --> GD[(gold_facilities<br/>+ trust_score · flags · h3_6 · h3_8 · st_geom)]
+    ST & CT --> GD[(gold_facilities<br/>+ trust_score · flags · h3_6 · h3_8 · st_geom_wkt)]
     GD --> VS[(Vector Search index<br/>facilities_idx · gte-large-en)]
     GD --> GE[(Genie space<br/>pramana_facilities)]
   end
@@ -127,7 +127,7 @@ example values — Genie quality is bottlenecked on column-comment quality.
 | Silver | `silver_contradictions` | Long form of R1–R8 flags (one row per flag). |
 | Silver | `silver_trust` | Per-facility trust score and flags array. |
 | Silver | `ref_state_bbox` | Materialized lookup of `india_state_bbox.json`. |
-| Gold | `gold_facilities` | Silver ⊕ trust ⊕ flags ⊕ `h3_6` ⊕ `h3_8` ⊕ `st_geom`. Powers the map UI and the Genie space. |
+| Gold | `gold_facilities` | Silver ⊕ trust ⊕ flags ⊕ `h3_6` ⊕ `h3_8` ⊕ `st_geom_wkt` (WKT string; hydrate with `ST_GeomFromText`). Powers the map UI and the Genie space. |
 | Gold | `gold_eval_qa` | 25-row golden Q&A registered as MLflow eval dataset. |
 
 H3 IDs are stored as **hex strings** (`h3_h3tostring`) because Streamlit's
@@ -227,7 +227,7 @@ pramana/
 │   ├── 02_silver_clean.py          typo fix · array parse · geo validate · column comments
 │   ├── 03_silver_text_repr.py      embedding-source text + CDF
 │   ├── 04_silver_contradictions.py R1–R8 batch UDF + trust score
-│   ├── 05_gold_facilities.py       join · h3_6 · h3_8 · st_geom · column comments
+│   ├── 05_gold_facilities.py       join · h3_6 · h3_8 · st_geom_wkt · column comments
 │   ├── 06_vector_index.py          create endpoint + delta-sync index (idempotent)
 │   ├── 07_genie_setup.md           manual Genie space setup (Free-Edition limit)
 │   ├── 08_register_uc_tools.py     register the 5 UC functions + smoke test
