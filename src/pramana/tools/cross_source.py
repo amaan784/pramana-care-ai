@@ -6,8 +6,6 @@ description text, capability array, capacity/doctors fill-rate).
 """
 from __future__ import annotations
 
-from pramana.config import CATALOG, SCHEMA
-
 
 def cross_source_disagree(facility_id: str, claim: str) -> str:
     """Check whether a textual ``claim`` about a facility is corroborated across
@@ -33,11 +31,16 @@ def cross_source_disagree(facility_id: str, claim: str) -> str:
         ``sources_total`` (always 6).
     """
     import json
+    import os
     from pyspark.sql import SparkSession
+
+    cat = os.environ.get("PRAMANA_CATALOG", "workspace")
+    sch = os.environ.get("PRAMANA_SCHEMA", "pramana")
+
     spark = SparkSession.builder.getOrCreate()
     rows = spark.sql(
         f"SELECT specialties, capability, equipment, procedure, description, "
-        f"capacity, number_doctors FROM {CATALOG}.{SCHEMA}.silver_facilities_clean "
+        f"capacity, number_doctors FROM {cat}.{sch}.silver_facilities_clean "
         f"WHERE facility_id = :fid LIMIT 1",
         args={"fid": facility_id},
     ).collect()

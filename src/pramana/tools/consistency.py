@@ -244,8 +244,8 @@ def score_claim_consistency(facility_id: str) -> str:
     JSON envelope with its trust score and any flags fired.
 
     Reads the row from ``silver_facilities_clean`` and the state bounding-box
-    table ``ref_state_bbox`` from the catalog/schema configured in
-    ``pramana.config`` (default ``workspace.pramana``). Use this to verify a
+    table ``ref_state_bbox``. Catalog/schema default to ``workspace.pramana``;
+    override with ``PRAMANA_CATALOG`` / ``PRAMANA_SCHEMA`` if needed. Use this to verify a
     specific facility's claims mid-conversation rather than scanning the whole
     table.
 
@@ -259,11 +259,15 @@ def score_claim_consistency(facility_id: str) -> str:
         is worse) and ``flags`` (list of dicts with ``rule_id``, ``severity``,
         ``message``, ``evidence`` and ``citation_column``).
     """
+    import os
     from pyspark.sql import SparkSession
-    from pramana.config import CATALOG, SCHEMA
+
+    cat = os.environ.get("PRAMANA_CATALOG", "workspace")
+    sch = os.environ.get("PRAMANA_SCHEMA", "pramana")
+
     spark = SparkSession.builder.getOrCreate()
     row = spark.sql(
-        f"SELECT * FROM {CATALOG}.{SCHEMA}.silver_facilities_clean WHERE facility_id = :fid LIMIT 1",
+        f"SELECT * FROM {cat}.{sch}.silver_facilities_clean WHERE facility_id = :fid LIMIT 1",
         args={"fid": facility_id},
     ).collect()
     if not row:
@@ -271,7 +275,7 @@ def score_claim_consistency(facility_id: str) -> str:
     d = row[0].asDict(recursive=True)
     try:
         bbox_rows = spark.sql(
-            f"SELECT state, min_lat, max_lat, min_lon, max_lon FROM {CATALOG}.{SCHEMA}.ref_state_bbox"
+            f"SELECT state, min_lat, max_lat, min_lon, max_lon FROM {cat}.{sch}.ref_state_bbox"
         ).collect()
         bbox = {r["state"]: r.asDict() for r in bbox_rows}
     except Exception:

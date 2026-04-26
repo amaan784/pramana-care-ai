@@ -7,8 +7,6 @@ notebook code path and as a UC function for ad-hoc Genie/SQL use.
 from __future__ import annotations
 import json
 
-from pramana.config import INDEX
-
 
 def search_facilities(query: str, k: int) -> str:
     """Return top-k facilities matching free-text ``query`` as a JSON list.
@@ -32,9 +30,16 @@ def search_facilities(query: str, k: int) -> str:
         with ``facility_id``, ``name``, ``city``, ``state``, ``facility_type``
         and ``description``).
     """
+    import os
+
     from databricks.vector_search.client import VectorSearchClient
+
+    cat = os.environ.get("PRAMANA_CATALOG", "workspace")
+    sch = os.environ.get("PRAMANA_SCHEMA", "pramana")
+    index = os.environ.get("PRAMANA_INDEX", f"{cat}.{sch}.facilities_idx")
+
     client = VectorSearchClient(disable_notice=True)
-    idx = client.get_index(index_name=INDEX)
+    idx = client.get_index(index_name=index)
     res = idx.similarity_search(
         query_text=query,
         columns=["facility_id", "name", "city", "state", "facility_type", "description"],
