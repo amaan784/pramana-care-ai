@@ -61,6 +61,6 @@ while True:
 # COMMAND ----------
 res = idx.similarity_search(
     query_text="cardiac surgery hospital with cath lab in Bihar",
-    columns=["facility_id", "name", "district", "state", "facility_type", "description"],
+    columns=["facility_id", "name", "city", "state", "facility_type", "description"],
     num_results=5, query_type="HYBRID")
 display(res)

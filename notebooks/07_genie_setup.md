@@ -11,7 +11,7 @@ service-principal gymnastics, so we drive this once by hand.
 4. **Warehouse:** the 2X-Small serverless SQL warehouse used by the bundle.
 5. **Instructions** (paste verbatim):
 
-> You answer questions about Indian healthcare facilities. PIN codes are STRINGS with leading zeros — never cast to INT. Always prefer `gold_facilities`. `trust_score` is 0–100 with lower = more contradictions. `flags` is an array of struct{rule_id, severity, message, evidence, citation_column}. `h3_6` and `h3_8` are STRING H3 cell ids. The `facility_type` column normalises the bug `farmacy → pharmacy`; original is in `facility_type_raw`. Coordinates have ~23% inaccuracy concentrated in NITI Aspirational Districts.
+> You answer questions about Indian healthcare facilities. PIN codes are STRINGS with leading zeros — never cast to INT. Always prefer `gold_facilities`. `trust_score` is 0–100 with lower = more contradictions. `flags` is an array of struct{rule_id, severity, message, evidence, citation_column}. `h3_6` and `h3_8` are STRING H3 cell ids. The `facility_type` column normalises the bug `farmacy → pharmacy`; original is in `facility_type_raw`. The `state` column is the canonical state name resolved via `ref_state_aliases`; the verbatim source is in `state_raw`. The dataset has no district column, so use `city` (sourced from `address_city`) — for most rows city ≈ district HQ. Specialty values are camelCase concatenated tokens (e.g. `'medicaloncology'`, `'orthopedicsurgery'`); always match with `contains(lower(x), 'oncolog')` style substrings, not equality. Coordinates have ~23% inaccuracy concentrated in NITI Aspirational Districts.
 
 ## 5 Example SQL queries (paste as Genie examples)
 
@@ -24,16 +24,16 @@ GROUP BY state ORDER BY n DESC;
 SELECT facility_type_raw, COUNT(*) AS n FROM main.pramana.gold_facilities
 WHERE facility_type_raw = 'farmacy' GROUP BY 1;
 
--- Q3: Districts with zero oncology coverage.
+-- Q3: Cities with zero oncology coverage in a state (city ≈ district HQ).
 WITH onc AS (
-  SELECT DISTINCT district FROM main.pramana.gold_facilities
+  SELECT DISTINCT city FROM main.pramana.gold_facilities
   WHERE exists(specialties, x -> contains(lower(x), 'oncolog'))
 )
-SELECT DISTINCT district FROM main.pramana.gold_facilities
-WHERE district NOT IN (SELECT district FROM onc) AND state = 'Bihar';
+SELECT DISTINCT city FROM main.pramana.gold_facilities
+WHERE city NOT IN (SELECT city FROM onc) AND state = 'Bihar';
 
 -- Q4: Lowest-trust hospitals.
-SELECT facility_id, name, state, district, trust_score
+SELECT facility_id, name, state, city, trust_score
 FROM main.pramana.gold_facilities
 WHERE facility_type = 'hospital'
 ORDER BY trust_score ASC LIMIT 25;
@@ -49,7 +49,7 @@ GROUP BY rule_id, severity ORDER BY rule_id, severity;
 1. *How many facilities per state, ranked descending?*
 2. *Which facilities in Bihar claim cardiac surgery but have an empty equipment array?*
 3. *How many entries had the 'farmacy' typo and what is their state distribution?*
-4. *Which districts in India have zero oncology coverage?*
+4. *Which cities in Bihar have zero oncology coverage?*
 5. *Show me the 25 lowest-trust hospitals.*
 
 ## After saving

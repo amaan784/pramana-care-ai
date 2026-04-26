@@ -30,7 +30,7 @@ def geo_radius(lat: float, lon: float, radius_km: float = 50.0,
       SELECT explode(h3_kring((SELECT h FROM center), {k})) AS hex
     )
     SELECT
-      facility_id, name, facility_type, state, district, latitude, longitude,
+      facility_id, name, facility_type, state, city, latitude, longitude,
       trust_score,
       ST_DistanceSpheroid(
         ST_Point({float(lon)}, {float(lat)}),

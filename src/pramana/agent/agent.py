@@ -48,7 +48,7 @@ class PramanaAgent(ResponsesAgent):
             query_type="HYBRID",
             tool_name="search_facilities",
             tool_description="Search Indian medical facilities by free-text claim or specialty.",
-            columns=["facility_id", "name", "district", "state",
+            columns=["facility_id", "name", "city", "state",
                       "facility_type", "description"],
         )
 

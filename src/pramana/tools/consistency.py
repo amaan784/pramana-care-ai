@@ -38,18 +38,26 @@ FAKE_AWARD_PATTERNS = [
 ]
 
 SPECIALTY_EQUIPMENT_HINTS: dict[str, list[str]] = {
-    "cardiology":      ["ecg", "echo", "cath", "angio", "defibrillator", "stent"],
-    "oncology":        ["chemo", "linac", "radiotherapy", "ct", "pet", "mri"],
-    "radiology":       ["ct", "mri", "x-ray", "ultrasound", "xray"],
-    "nephrology":      ["dialysis", "hemodialysis", "ro plant"],
-    "orthopedics":     ["x-ray", "c-arm", "arthroscope"],
-    "neurology":       ["mri", "ct", "eeg", "emg"],
-    "obstetrics":      ["ultrasound", "ctg", "delivery", "incubator"],
-    "pediatrics":      ["incubator", "phototherapy", "warmer"],
-    "ophthalmology":   ["slit lamp", "phaco", "yag", "tonometer"],
-    "pulmonology":     ["spirometer", "ventilator", "bipap", "cpap"],
-    "gastroenterology": ["endoscope", "colonoscope", "gastroscope"],
+    "cardiology":       ["ecg", "echo", "cath", "angio", "defibrillator", "stent", "tmt"],
+    "cardiacsurg":      ["cath", "perfusion", "ventilator", "icu", "echo"],
+    "oncology":         ["chemo", "linac", "radiotherapy", "ct", "pet", "mri", "brachy"],
+    "radiology":        ["ct", "mri", "x-ray", "ultrasound", "xray", "usg"],
+    "nephrology":       ["dialysis", "hemodialysis", "ro plant"],
+    "orthopedic":       ["x-ray", "xray", "c-arm", "arthroscope", "image intensifier"],
+    "neurology":        ["mri", "ct", "eeg", "emg"],
+    "neurosurg":        ["mri", "ct", "microscope", "navigation"],
+    "obstetric":        ["ultrasound", "ctg", "delivery", "incubator"],
+    "gynecolog":        ["ultrasound", "colposcope", "ot"],
+    "pediatric":        ["incubator", "phototherapy", "warmer", "nicu"],
+    "neonato":          ["incubator", "warmer", "phototherapy", "nicu", "cpap", "ventilator"],
+    "ophthalmology":    ["slit lamp", "phaco", "yag", "tonometer", "fundus"],
+    "pulmonology":      ["spirometer", "ventilator", "bipap", "cpap", "bronchoscope"],
+    "gastroenterology": ["endoscope", "colonoscope", "gastroscope", "ercp"],
+    "urology":          ["cystoscope", "lithotripter", "uro"],
+    "otolaryngology":   ["audiometer", "endoscope", "tympanometer"],
 }
+
+PEDIATRIC_DENTAL_FALSE_POSITIVE = re.compile(r"pediatric.*dent|dent.*pediatric", re.I)
 
 
 def _to_list(v: Any) -> list[str]:
@@ -107,16 +115,27 @@ def evaluate_facility(row: dict, state_bbox: dict | None = None) -> list[dict]:
     state_bbox = state_bbox or {}
     flags: list[dict] = []
 
+    def _s(x):
+        """NaN-safe string coercion (pandas null is float('nan'), not None)."""
+        if x is None:
+            return ""
+        try:
+            if isinstance(x, float) and x != x:
+                return ""
+        except Exception:
+            pass
+        return str(x)
+
     specialties = _to_list(row.get("specialties"))
     procedure   = _to_list(row.get("procedure"))
     equipment   = _to_list(row.get("equipment"))
     capability  = _to_list(row.get("capability"))
-    description = (row.get("description") or "")
-    ftype = (row.get("facility_type") or row.get("facilityTypeId") or "").lower()
+    description = _s(row.get("description"))
+    ftype = _s(row.get("facility_type") or row.get("facilityTypeId")).lower()
     capacity = row.get("capacity")
     n_doctors = row.get("number_doctors") or row.get("numberDoctors")
     lat, lon = row.get("latitude"), row.get("longitude")
-    state = row.get("state") or row.get("address_stateOrRegion")
+    state = _s(row.get("state") or row.get("address_stateOrRegion")) or None
 
     claims_blob = " ".join(specialties + capability + procedure)
 
@@ -163,11 +182,12 @@ def evaluate_facility(row: dict, state_bbox: dict | None = None) -> list[dict]:
                 "capacity|numberDoctors|equipment",
             ))
 
-    if ftype == "farmacy":
+    ftype_raw = _s(row.get("facility_type_raw") or row.get("facilityTypeId")).lower()
+    if ftype == "farmacy" or ftype_raw == "farmacy":
         flags.append(_flag(
             "R5", "MED",
             "Facility type 'farmacy' is a data-entry typo of 'pharmacy'.",
-            "facilityTypeId='farmacy'",
+            f"facilityTypeId='{ftype_raw or 'farmacy'}'",
             "facilityTypeId",
         ))
 
@@ -184,6 +204,8 @@ def evaluate_facility(row: dict, state_bbox: dict | None = None) -> list[dict]:
     eq_blob = " ".join(equipment)
     for sp in specialties:
         sp_norm = sp.lower().strip()
+        if PEDIATRIC_DENTAL_FALSE_POSITIVE.search(sp_norm):
+            continue
         for key, hints in SPECIALTY_EQUIPMENT_HINTS.items():
             if key in sp_norm and not _has_any(eq_blob, hints):
                 flags.append(_flag(
@@ -194,14 +216,16 @@ def evaluate_facility(row: dict, state_bbox: dict | None = None) -> list[dict]:
                 ))
                 break
 
-    yr_updated = row.get("recency_of_page_update_months")
-    socials = [row.get(k) for k in ("social_facebook", "social_twitter", "social_instagram", "website")]
-    if (yr_updated is not None and yr_updated > 24) or all(not s for s in socials):
+    months_old = row.get("recency_months") or row.get("recency_of_page_update_months")
+    socials = [row.get(k) for k in ("facebookLink", "twitterLink", "instagramLink",
+                                       "linkedinLink", "websites", "officialWebsite")]
+    socials_present = [bool(s) for s in socials]
+    if (months_old is not None and months_old > 24) or not any(socials_present):
         flags.append(_flag(
             "R8", "LOW",
             "Stale page (>24 months) or zero web/social presence.",
-            f"recency_months={yr_updated} socials_present={[bool(s) for s in socials]}",
-            "recency|social_*|website",
+            f"recency_months={months_old} socials_present={socials_present}",
+            "recency_of_page_update|facebookLink|twitterLink|instagramLink|websites",
         ))
 
     return flags

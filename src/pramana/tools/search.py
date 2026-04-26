@@ -18,7 +18,7 @@ def search_facilities(query: str, k: int = 8) -> str:
     idx = client.get_index(index_name="main.pramana.facilities_idx")
     res = idx.similarity_search(
         query_text=query,
-        columns=["facility_id", "name", "district", "state", "facility_type", "description"],
+        columns=["facility_id", "name", "city", "state", "facility_type", "description"],
         num_results=int(k),
         query_type="HYBRID",
     )

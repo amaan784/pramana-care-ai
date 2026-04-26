@@ -146,7 +146,7 @@ with tab_audit:
     )
 
     audit_sql = """
-    SELECT facility_id, name, facility_type_raw, facility_type, state, district,
+    SELECT facility_id, name, facility_type_raw, facility_type, state, city,
            latitude, longitude, trust_score,
            size(flags) AS n_flags
     FROM main.pramana.gold_facilities
@@ -161,7 +161,7 @@ with tab_audit:
         st.subheader("Raw — claims & coordinates as ingested")
         if not bad.empty:
             st.dataframe(
-                bad[["facility_id", "name", "facility_type_raw", "state", "district",
+                bad[["facility_id", "name", "facility_type_raw", "state", "city",
                      "latitude", "longitude"]],
                 use_container_width=True, height=420,
             )
