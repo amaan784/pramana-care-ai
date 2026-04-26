@@ -1,0 +1,11 @@
+command: ["streamlit", "run", "app/app.py"]
+
+env:
+  - name: WAREHOUSE_ID
+    valueFrom: pramana-sql-warehouse
+  - name: GENIE_SPACE_ID
+    valueFrom: pramana-genie-space
+  - name: PRAMANA_CATALOG
+    value: workspace
+  - name: PRAMANA_SCHEMA
+    value: pramana
