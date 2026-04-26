@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from pramana.config import SOURCE_TEXT_TABLE
 
 def seed_from_corpus(text_table: str = "workspace.pramana.silver_facilities_text",
                       n: int = 15) -> pd.DataFrame:

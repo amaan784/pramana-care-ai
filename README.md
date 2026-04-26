@@ -21,9 +21,10 @@ Mosaic AI Vector Search · Genie · Unity Catalog · Databricks Apps.
 The VillageFinder dataset is a useful but messy snapshot of 10,000 Indian
 healthcare facilities. NGO and government planners need to answer questions
 like *"can District Hospital Kishanganj actually perform a cardiac procedure
-tonight?"* — but the data has six known systemic bugs:
+tonight?"* — but the data has six measured systemic bugs (counts confirmed
+against the materialised lakehouse, not the raw spec):
 
-| Bug | Frequency | Impact |
+| Bug | Frequency (measured) | Impact |
 |---|---|---|
 | `facilityTypeId = "farmacy"` (typo of pharmacy) | 166 of 184 "pharmacies" (~90%) | Any state-level pharmacy density analysis is off by 10× |
 | Fabricated awards in `description` (`W.HO award`, `ISO 9001:2025`) | 0 in this snapshot | Rule is armed for future ingests; the agent must not fabricate a bug |
@@ -79,7 +80,7 @@ flowchart TD
     SC --> ST[(silver_facilities_text<br/>CDF enabled · embedding source)]
     SC --> CT[(silver_contradictions<br/>R1–R8 long form)]
     SC --> CL[(silver_claims_long<br/>per-claim explosion)]
-    ST & CT --> GD[(gold_facilities<br/>+ trust_score · flags · h3_6 · h3_8 · st_geom)]
+    ST & CT --> GD[(gold_facilities<br/>+ trust_score · flags · h3_6 · h3_8 · st_geom_wkt)]
     GD --> VS[(Vector Search index<br/>facilities_idx · gte-large-en)]
     GD --> GE[(Genie space<br/>pramana_facilities)]
   end
@@ -127,7 +128,7 @@ example values — Genie quality is bottlenecked on column-comment quality.
 | Silver | `silver_contradictions` | Long form of R1–R8 flags (one row per flag). |
 | Silver | `silver_trust` | Per-facility trust score and flags array. |
 | Silver | `ref_state_bbox` | Materialized lookup of `india_state_bbox.json`. |
-| Gold | `gold_facilities` | Silver ⊕ trust ⊕ flags ⊕ `h3_6` ⊕ `h3_8` ⊕ `st_geom`. Powers the map UI and the Genie space. |
+| Gold | `gold_facilities` | Silver ⊕ trust ⊕ flags ⊕ `h3_6` ⊕ `h3_8` ⊕ `st_geom_wkt` (WKT string; hydrate with `ST_GeomFromText`). Powers the map UI and the Genie space. |
 | Gold | `gold_eval_qa` | 25-row golden Q&A registered as MLflow eval dataset. |
 
 H3 IDs are stored as **hex strings** (`h3_h3tostring`) because Streamlit's
@@ -229,7 +230,7 @@ pramana/
 │   ├── 02_silver_clean.py          typo fix · array parse · geo validate · column comments
 │   ├── 03_silver_text_repr.py      embedding-source text + CDF
 │   ├── 04_silver_contradictions.py R1–R8 batch UDF + trust score
-│   ├── 05_gold_facilities.py       join · h3_6 · h3_8 · st_geom · column comments
+│   ├── 05_gold_facilities.py       join · h3_6 · h3_8 · st_geom_wkt · column comments
 │   ├── 06_vector_index.py          create endpoint + delta-sync index (idempotent)
 │   ├── 07_genie_setup.md           manual Genie space setup (Free-Edition limit)
 │   ├── 08_register_uc_tools.py     register the 4 UC verifier functions + smoke test
@@ -265,11 +266,11 @@ pramana/
 2. **"Which districts in Bihar have zero functional oncology coverage within 50 km?"**
    → Genie aggregation × `geo_radius` × Aspirational-Districts overlay. *Social Impact.*
 3. **"Show me every facility whose listed coordinates fall outside its claimed state."**
-   → R3 at scale; counts cross-tabulated with NITI Aspirational Districts. *IDP, Social Impact.*
+   → R3 at scale; **51 cross-state mismatches** confirmed in the lakehouse, cross-tabulated with NITI Aspirational Districts (note: 0 rows outside the India bounding box — every facility's lat/lon is *somewhere* in India, just not always its claimed state). *IDP, Social Impact.*
 4. **"How many entries have the `farmacy` typo and what's the impact on pharmacy supply analytics?"**
-   → R5 + per-state recompute showing the 10× undercount. *IDP.*
-5. **"Audit the dataset for fabricated certifications."**
-   → R6 + `ai_classify` validation. *Discovery/Verification.*
+   → R5 + per-state recompute showing the 10× undercount (166 / 184 = 90.2%). *IDP.*
+5. **"Audit the dataset for fabricated certifications like W.HO award or ISO 9001:2025+."**
+   → R6 fires **0 times** on this snapshot. The agent returns *"No fabricated awards detected in this snapshot of 10,000 facilities. Confidence: high."* — this demonstrates **honest refusal rather than fabrication**, which is the entire point of a Truth-Check Engine. The rule is armed for future ingest cycles. *Discovery/Verification.*
 
 Eval headline: `notebooks/10_eval.py` runs the same 25 questions through
 (a) bare Llama 3.3 70B with no tools and (b) the full Pramana agent, and

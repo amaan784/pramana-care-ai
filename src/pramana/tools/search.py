@@ -1,21 +1,28 @@
 """Hybrid vector search wrapper.
 
 The agent uses `databricks_langchain.VectorSearchRetrieverTool` directly
-(see agent/graph.py); this thin Python wrapper exists for the *batch*
-notebook code path and as a UC function for ad-hoc Genie/SQL use.
+(see agent/agent.py); this thin Python wrapper exists for local/notebook
+experiments only. It is **not** registered as a Unity Catalog Python function:
+UC Python UDF sandboxes do not inherit notebook `%pip` packages like
+`databricks-vectorsearch`.
 """
 from __future__ import annotations
 import json
 
 
-def search_facilities(query: str, k: int = 8) -> str:
-    """Return top-k facilities matching free-text `query` as JSON list.
+def search_facilities(query: str, k: int) -> str:
+    """Return top-k facilities matching free-text ``query`` as a JSON list.
 
     Local/notebook-only helper. The deployed agent uses
     `VectorSearchRetrieverTool` directly.
     """
     import os
     from databricks.vector_search.client import VectorSearchClient
+
+    cat = os.environ.get("PRAMANA_CATALOG", "workspace")
+    sch = os.environ.get("PRAMANA_SCHEMA", "pramana")
+    index = os.environ.get("PRAMANA_INDEX", f"{cat}.{sch}.facilities_idx")
+
     client = VectorSearchClient(disable_notice=True)
     cat = os.environ.get("PRAMANA_CATALOG", "workspace")
     sch = os.environ.get("PRAMANA_SCHEMA", "pramana")

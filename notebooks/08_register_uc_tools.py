@@ -10,6 +10,7 @@
 # COMMAND ----------
 import sys
 sys.path.insert(0, "../src")
+from pramana.config import CATALOG, SCHEMA
 from pramana.tools.registration import register_all
 from pramana.config import CATALOG, SCHEMA
 

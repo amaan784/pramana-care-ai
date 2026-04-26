@@ -19,8 +19,12 @@ flags_known_bugs = Guidelines(
     guidelines=(
         "When the user asks about data quality, pharmacy/farmacy typos, fake 'W.HO' "
         "awards, or coordinate accuracy in Aspirational Districts, the answer must "
-        "explicitly call out the bug (typo / fabricated award / inaccurate coords) "
-        "and propose a remediation. If unrelated, this guideline is not applicable."
+        "either (a) explicitly call out the bug (typo / fabricated award / inaccurate "
+        "coords) with a row count and propose a remediation, OR (b) honestly report "
+        "that the rule fired zero times in this snapshot and state that the rule "
+        "remains armed for future ingest cycles. Inventing matches when the rule did "
+        "not fire is a failure. If the question is unrelated to data quality, this "
+        "guideline is not applicable."
     ),
 )
 

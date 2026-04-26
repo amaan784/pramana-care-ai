@@ -4,8 +4,8 @@ Four table-backed tools are SQL functions. Facility search is provided by the
 agent's VectorSearchRetrieverTool, not by a UC Python UDF.
 """
 from __future__ import annotations
-from pramana.config import CATALOG, SCHEMA
 
+from pramana.config import CATALOG, SCHEMA
 
 def register_all(spark) -> list[str]:
     """Register the four UC functions in `pramana.config.UC_TOOLS`."""

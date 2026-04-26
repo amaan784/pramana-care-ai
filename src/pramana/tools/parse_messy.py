@@ -6,7 +6,23 @@ from __future__ import annotations
 
 
 def parse_messy_field(text: str) -> str:
-    """Extract structured fields from a messy facility note. Returns JSON string."""
+    """Extract structured fields from a messy free-form facility text snippet.
+
+    Calls Databricks' ``ai_extract`` foundation-model function over the labels
+    ``specialties``, ``equipment``, ``awards``, ``certifications``, ``services``,
+    ``operating_hours``, ``languages``, ``insurance_accepted``. Useful when the
+    ``description`` column contains a paragraph of marketing copy and you need
+    structured fields back.
+
+    Args:
+        text: Raw free-form text to parse. Will be truncated to the first 4000
+            characters before the LLM call. Pass an empty string to short-circuit
+            and get back ``{}``.
+
+    Returns:
+        JSON string with one key per extracted label, mapping to a list of
+        strings (or null if the label was not found in the text).
+    """
     import json
     from pyspark.sql import SparkSession
     if not text or not str(text).strip():
