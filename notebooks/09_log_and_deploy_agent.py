@@ -77,7 +77,20 @@ dep = agents.deploy(
     endpoint_name=SERVING_ENDPOINT_NAME,
     scale_to_zero=True,
     tags={"project": "pramana", "stage": "demo"},
-    environment_vars={"GENIE_SPACE_ID": os.environ.get("GENIE_SPACE_ID", "")},
+    environment_vars={
+        "GENIE_SPACE_ID": os.environ.get("GENIE_SPACE_ID", ""),
+        "WAREHOUSE_ID": os.environ.get("WAREHOUSE_ID", ""),
+        "PRAMANA_CATALOG": os.environ.get("PRAMANA_CATALOG", "workspace"),
+        "PRAMANA_SCHEMA": os.environ.get("PRAMANA_SCHEMA", "pramana"),
+        "PRAMANA_INDEX": os.environ.get(
+            "PRAMANA_INDEX",
+            "workspace.pramana.facilities_idx",
+        ),
+        "SERVING_ENDPOINT_NAME": os.environ.get(
+            "SERVING_ENDPOINT_NAME",
+            "pramana-agent",
+        ),
+    },
 )
 print("Endpoint:", dep.endpoint_name)
 print("Review App:", dep.review_app_url)
