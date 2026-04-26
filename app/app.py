@@ -43,10 +43,28 @@ CATALOG = os.environ.get("PRAMANA_CATALOG", "workspace")
 SCHEMA = os.environ.get("PRAMANA_SCHEMA", "pramana")
 NS = f"{CATALOG}.{SCHEMA}"
 
-
 @st.cache_resource(show_spinner=False)
 def _workspace_client() -> WorkspaceClient:
     return WorkspaceClient()
+
+
+def _serving_api_token() -> str:
+    """Return the best available token for OpenAI-compatible serving calls.
+
+    Tries OAuth (Databricks Apps), then SDK config token, then DATABRICKS_TOKEN.
+    """
+    w = _workspace_client()
+    try:
+        return w.config.oauth_token().access_token
+    except Exception:
+        pass
+    token = getattr(w.config, "token", None)
+    if token:
+        return token
+    token = os.environ.get("DATABRICKS_TOKEN")
+    if token:
+        return token
+    raise RuntimeError("No Databricks token available for serving endpoint calls.")
 
 
 @st.cache_resource(show_spinner=False)
@@ -55,7 +73,7 @@ def _openai_client() -> OpenAI | None:
         return None
     w = _workspace_client()
     return OpenAI(
-        api_key=w.config.oauth_token().access_token,
+        api_key=_serving_api_token(),
         base_url=f"{w.config.host}/serving-endpoints",
     )
 
