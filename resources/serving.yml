@@ -1,0 +1,10 @@
+# The actual serving endpoint is created by databricks.agents.deploy(...) in notebook 09.
+# This file documents the expected endpoint for downstream resources (the App) to reference.
+resources:
+  jobs:
+    pramana_serving_smoketest:
+      name: pramana-serving-smoketest-${bundle.target}
+      tasks:
+        - task_key: smoketest
+          notebook_task:
+            notebook_path: ../notebooks/10_eval.py

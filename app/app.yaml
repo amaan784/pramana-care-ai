@@ -1,0 +1,9 @@
+command: ["streamlit", "run", "app.py"]
+
+env:
+  - name: SERVING_ENDPOINT_NAME
+    valueFrom: pramana-serving-endpoint
+  - name: GENIE_SPACE_ID
+    valueFrom: pramana-genie-space
+  - name: WAREHOUSE_ID
+    valueFrom: pramana-sql-warehouse

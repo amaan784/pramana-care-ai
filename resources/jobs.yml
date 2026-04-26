@@ -1,0 +1,51 @@
+resources:
+  jobs:
+    pramana_ingest:
+      name: pramana-ingest-${bundle.target}
+      max_concurrent_runs: 1
+      tasks:
+        - task_key: bronze
+          notebook_task:
+            notebook_path: ../notebooks/01_bronze_ingest.py
+        - task_key: silver_clean
+          depends_on: [{ task_key: bronze }]
+          notebook_task:
+            notebook_path: ../notebooks/02_silver_clean.py
+        - task_key: silver_text
+          depends_on: [{ task_key: silver_clean }]
+          notebook_task:
+            notebook_path: ../notebooks/03_silver_text_repr.py
+        - task_key: silver_contradictions
+          depends_on: [{ task_key: silver_clean }]
+          notebook_task:
+            notebook_path: ../notebooks/04_silver_contradictions.py
+        - task_key: gold
+          depends_on:
+            - { task_key: silver_text }
+            - { task_key: silver_contradictions }
+          notebook_task:
+            notebook_path: ../notebooks/05_gold_facilities.py
+
+    pramana_build_index:
+      name: pramana-build-index-${bundle.target}
+      max_concurrent_runs: 1
+      tasks:
+        - task_key: vector_index
+          notebook_task:
+            notebook_path: ../notebooks/06_vector_index.py
+        - task_key: register_uc_tools
+          depends_on: [{ task_key: vector_index }]
+          notebook_task:
+            notebook_path: ../notebooks/08_register_uc_tools.py
+
+    pramana_deploy_agent:
+      name: pramana-deploy-agent-${bundle.target}
+      max_concurrent_runs: 1
+      tasks:
+        - task_key: log_register_deploy
+          notebook_task:
+            notebook_path: ../notebooks/09_log_and_deploy_agent.py
+        - task_key: evaluate
+          depends_on: [{ task_key: log_register_deploy }]
+          notebook_task:
+            notebook_path: ../notebooks/10_eval.py
