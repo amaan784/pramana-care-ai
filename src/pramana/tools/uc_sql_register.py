@@ -39,21 +39,25 @@ RETURNS STRING
 LANGUAGE SQL
 COMMENT 'Trust score + contradiction flags for one facility (from gold_facilities).'
 RETURN (
-  SELECT IFNULL(
-    (
-      SELECT to_json(
+  WITH params AS (
+    SELECT fid AS q_fid
+  )
+  SELECT CASE
+    WHEN g.facility_id IS NULL THEN
+      to_json(named_struct('facility_id', p.q_fid, 'error', 'not found'))
+    ELSE
+      to_json(
         named_struct(
           'facility_id', g.facility_id,
           'trust_score', g.trust_score,
           'flags', g.flags
         )
       )
-      FROM {ns}.gold_facilities g
-      WHERE g.facility_id = fid
-      LIMIT 1
-    ),
-    to_json(named_struct('facility_id', fid, 'error', 'not found'))
-  )
+    END
+  FROM params p
+  LEFT JOIN {ns}.gold_facilities g
+    ON g.facility_id = p.q_fid
+  LIMIT 1
 );
 """
     )
@@ -98,71 +102,79 @@ RETURNS STRING
 LANGUAGE SQL
 COMMENT 'Facilities within p_radius_km of (p_lat,p_lon); optional specialty substring filter.'
 RETURN (
+  WITH params AS (
+    SELECT
+      p_lat AS q_lat,
+      p_lon AS q_lon,
+      p_radius_km AS q_radius_km,
+      lower(trim(coalesce(p_specialty, ''))) AS q_specialty,
+      p_limit AS q_limit
+  ),
+  scored AS (
+    SELECT
+      g.facility_id,
+      g.name,
+      g.facility_type,
+      g.state,
+      g.city,
+      g.latitude,
+      g.longitude,
+      g.trust_score,
+      g.specialties,
+      p.q_lat,
+      p.q_lon,
+      p.q_radius_km,
+      p.q_specialty,
+      p.q_limit,
+      ST_DistanceSpheroid(
+        ST_Point(p.q_lon, p.q_lat),
+        ST_Point(g.longitude, g.latitude)
+      ) / 1000.0 AS distance_km
+    FROM {ns}.gold_facilities g
+    CROSS JOIN params p
+    WHERE g.latitude IS NOT NULL
+      AND g.longitude IS NOT NULL
+      AND (
+        p.q_specialty = ''
+        OR exists(
+          g.specialties,
+          x -> contains(lower(x), p.q_specialty)
+        )
+      )
+  ),
+  ranked AS (
+    SELECT
+      *,
+      row_number() OVER (ORDER BY distance_km ASC) AS rn
+    FROM scored
+    WHERE distance_km <= q_radius_km
+  )
   SELECT to_json(
     named_struct(
-      'center', named_struct('lat', p_lat, 'lon', p_lon),
-      'radius_km', p_radius_km,
-      'specialty', lower(trim(coalesce(p_specialty, ''))),
-      'results', coalesce(w.j, array())
+      'center', named_struct('lat', max(q_lat), 'lon', max(q_lon)),
+      'radius_km', max(q_radius_km),
+      'specialty', max(q_specialty),
+      'results', coalesce(
+        collect_list(
+          named_struct(
+            'facility_id', facility_id,
+            'name', name,
+            'facility_type', facility_type,
+            'state', state,
+            'city', city,
+            'latitude', latitude,
+            'longitude', longitude,
+            'trust_score', trust_score,
+            'distance_km', distance_km,
+            'specialties', specialties
+          )
+        ),
+        array()
+      )
     )
   )
-  FROM (
-    SELECT collect_list(
-      named_struct(
-        'facility_id', t.facility_id,
-        'name', t.name,
-        'facility_type', t.facility_type,
-        'state', t.state,
-        'city', t.city,
-        'latitude', t.latitude,
-        'longitude', t.longitude,
-        'trust_score', t.trust_score,
-        'distance_km', t.distance_km,
-        'specialties', t.specialties
-      )
-    ) AS j
-    FROM (
-      SELECT *
-      FROM (
-        SELECT
-          facility_id,
-          name,
-          facility_type,
-          state,
-          city,
-          latitude,
-          longitude,
-          trust_score,
-          specialties,
-          ST_DistanceSpheroid(
-            ST_Point(p_lon, p_lat),
-            ST_Point(longitude, latitude)
-          ) / 1000.0 AS distance_km
-        FROM {ns}.gold_facilities
-        WHERE h3_8 IN (
-          SELECT h3_h3tostring(h3idx)
-          FROM (
-            SELECT explode(
-              h3_kring(
-                h3_longlatash3(p_lon, p_lat, 8),
-                greatest(1, cast(ceil(p_radius_km / 0.461) AS INT))
-              )
-            ) AS h3idx
-          ) ring_cells
-        )
-        AND (
-          trim(coalesce(p_specialty, '')) = ''
-          OR exists(
-            specialties,
-            x -> contains(lower(x), lower(trim(p_specialty)))
-          )
-        )
-      ) raw
-      WHERE raw.distance_km <= p_radius_km
-      ORDER BY raw.distance_km ASC
-      LIMIT p_limit
-    ) t
-  ) w
+  FROM ranked
+  WHERE rn <= q_limit
 );
 """
     )
@@ -176,98 +188,121 @@ RETURNS STRING
 LANGUAGE SQL
 COMMENT 'True if >=2 independent source columns support tokens (>3 chars) from p_claim.'
 RETURN (
-  SELECT IFNULL(
-    (
-      SELECT to_json(
+  WITH params AS (
+    SELECT
+      p_fid AS q_fid,
+      p_claim AS q_claim,
+      filter(
+        split(trim(lower(p_claim)), ' '),
+        x -> length(x) > 3
+      ) AS q_needles
+  ),
+  base AS (
+    SELECT
+      p.q_fid,
+      p.q_claim,
+      p.q_needles,
+      s.facility_id,
+      s.specialties,
+      s.capability,
+      s.equipment,
+      s.procedure,
+      s.description,
+      s.capacity,
+      s.number_doctors
+    FROM params p
+    LEFT JOIN {ns}.silver_facilities_clean s
+      ON s.facility_id = p.q_fid
+    LIMIT 1
+  ),
+  hits AS (
+    SELECT
+      q_fid,
+      q_claim,
+      facility_id,
+      CASE WHEN facility_id IS NULL THEN false ELSE aggregate(
+        q_needles,
+        false,
+        (acc, n) -> acc OR exists(
+          specialties,
+          s -> contains(lower(cast(s AS STRING)), n)
+        )
+      ) END AS hit_spec,
+      CASE WHEN facility_id IS NULL THEN false ELSE aggregate(
+        q_needles,
+        false,
+        (acc, n) -> acc OR exists(
+          capability,
+          s -> contains(lower(cast(s AS STRING)), n)
+        )
+      ) END AS hit_cap,
+      CASE WHEN facility_id IS NULL THEN false ELSE aggregate(
+        q_needles,
+        false,
+        (acc, n) -> acc OR exists(
+          equipment,
+          s -> contains(lower(cast(s AS STRING)), n)
+        )
+      ) END AS hit_eq,
+      CASE WHEN facility_id IS NULL THEN false ELSE aggregate(
+        q_needles,
+        false,
+        (acc, n) -> acc OR exists(
+          procedure,
+          s -> contains(lower(cast(s AS STRING)), n)
+        )
+      ) END AS hit_proc,
+      CASE WHEN facility_id IS NULL THEN false ELSE aggregate(
+        q_needles,
+        false,
+        (acc, n) -> acc OR contains(lower(coalesce(description, '')), n)
+      ) END AS hit_desc,
+      CASE
+        WHEN facility_id IS NULL THEN false
+        ELSE (coalesce(capacity, 0) != 0 OR coalesce(number_doctors, 0) != 0)
+      END AS hit_cd
+    FROM base
+  )
+  SELECT CASE
+    WHEN facility_id IS NULL THEN
+      to_json(
         named_struct(
-          'facility_id', b.facility_id,
-          'claim', p_claim,
+          'facility_id', q_fid,
+          'claim', q_claim,
+          'agree', false,
+          'reason', 'facility not found',
+          'sources_supporting', cast(array() AS ARRAY<STRING>),
+          'sources_total', 0
+        )
+      )
+    ELSE
+      to_json(
+        named_struct(
+          'facility_id', facility_id,
+          'claim', q_claim,
           'agree',
             cast(
-              cast(b.hit_spec AS INT) + cast(b.hit_cap AS INT) + cast(b.hit_eq AS INT)
-              + cast(b.hit_proc AS INT) + cast(b.hit_desc AS INT) + cast(b.hit_cd AS INT)
+              cast(hit_spec AS INT) + cast(hit_cap AS INT) + cast(hit_eq AS INT)
+              + cast(hit_proc AS INT) + cast(hit_desc AS INT) + cast(hit_cd AS INT)
               >= 2 AS BOOLEAN
             ),
           'sources_supporting',
             filter(
               array(
-                IF(b.hit_spec, 'specialties', CAST(NULL AS STRING)),
-                IF(b.hit_cap, 'capability', CAST(NULL AS STRING)),
-                IF(b.hit_eq, 'equipment', CAST(NULL AS STRING)),
-                IF(b.hit_proc, 'procedure', CAST(NULL AS STRING)),
-                IF(b.hit_desc, 'description', CAST(NULL AS STRING)),
-                IF(b.hit_cd, 'capacity_or_doctors', CAST(NULL AS STRING))
+                IF(hit_spec, 'specialties', CAST(NULL AS STRING)),
+                IF(hit_cap, 'capability', CAST(NULL AS STRING)),
+                IF(hit_eq, 'equipment', CAST(NULL AS STRING)),
+                IF(hit_proc, 'procedure', CAST(NULL AS STRING)),
+                IF(hit_desc, 'description', CAST(NULL AS STRING)),
+                IF(hit_cd, 'capacity_or_doctors', CAST(NULL AS STRING))
               ),
               x -> x IS NOT NULL
             ),
           'sources_total', 6
         )
       )
-      FROM (
-        SELECT
-          facility_id,
-          aggregate(
-            needle_arr,
-            false,
-            (acc, n) -> acc OR exists(
-              specialties,
-              s -> contains(lower(cast(s AS STRING)), n)
-            )
-          ) AS hit_spec,
-          aggregate(
-            needle_arr,
-            false,
-            (acc, n) -> acc OR exists(
-              capability,
-              s -> contains(lower(cast(s AS STRING)), n)
-            )
-          ) AS hit_cap,
-          aggregate(
-            needle_arr,
-            false,
-            (acc, n) -> acc OR exists(
-              equipment,
-              s -> contains(lower(cast(s AS STRING)), n)
-            )
-          ) AS hit_eq,
-          aggregate(
-            needle_arr,
-            false,
-            (acc, n) -> acc OR exists(
-              procedure,
-              s -> contains(lower(cast(s AS STRING)), n)
-            )
-          ) AS hit_proc,
-          aggregate(
-            needle_arr,
-            false,
-            (acc, n) -> acc OR contains(lower(coalesce(description, '')), n)
-          ) AS hit_desc,
-          (coalesce(capacity, 0) != 0 OR coalesce(number_doctors, 0) != 0) AS hit_cd
-        FROM (
-          SELECT
-            s.*,
-            filter(
-              split(trim(lower(p_claim)), ' '),
-              x -> length(x) > 3
-            ) AS needle_arr
-          FROM {ns}.silver_facilities_clean s
-          WHERE s.facility_id = p_fid
-          LIMIT 1
-        ) inner0
-      ) b
-    ),
-    to_json(
-      named_struct(
-        'facility_id', p_fid,
-        'claim', p_claim,
-        'agree', false,
-        'reason', 'facility not found',
-        'sources_supporting', cast(array() AS ARRAY<STRING>),
-        'sources_total', 0
-      )
-    )
-  )
+    END
+  FROM hits
 );
 """
     )
