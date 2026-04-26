@@ -1,0 +1,9 @@
+resources:
+  registered_models:
+    pramana_agent:
+      name: pramana_agent
+      catalog_name: ${var.catalog}
+      schema_name: ${var.schema}
+      comment: |
+        Pramana — agentic facility truth-check engine for Indian healthcare.
+        Logged via mlflow.pyfunc as a ResponsesAgent wrapping a LangGraph supervisor.

@@ -1,0 +1,19 @@
+resources:
+  apps:
+    pramana_app:
+      name: pramana-${bundle.target}
+      description: Pramana — Streamlit UI for the truth-check engine.
+      source_code_path: ../app
+      resources:
+        - name: pramana-serving-endpoint
+          serving_endpoint:
+            name: ${var.serving_endpoint_name}
+            permission: CAN_QUERY
+        - name: pramana-sql-warehouse
+          sql_warehouse:
+            id: ${var.warehouse_id}
+            permission: CAN_USE
+        - name: pramana-genie-space
+          genie_space:
+            space_id: ${var.genie_space_id}
+            permission: CAN_RUN

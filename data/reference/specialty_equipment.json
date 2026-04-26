@@ -1,0 +1,23 @@
+{
+  "cardiology":       ["ecg", "echo", "echocardiogram", "cath", "cath lab", "angiography", "defibrillator", "stent", "tmt", "holter"],
+  "cardiac surgery":  ["cath lab", "heart-lung machine", "perfusion", "icu", "ventilator", "echo"],
+  "oncology":         ["chemotherapy", "linac", "linear accelerator", "radiotherapy", "ct", "pet", "mri", "brachytherapy"],
+  "radiology":        ["ct", "ct scanner", "mri", "x-ray", "xray", "ultrasound", "usg", "mammography"],
+  "nephrology":       ["dialysis", "hemodialysis", "ro plant", "peritoneal"],
+  "orthopedics":      ["x-ray", "c-arm", "arthroscope", "image intensifier", "orthopedic table"],
+  "neurology":        ["mri", "ct", "eeg", "emg", "evoked potential"],
+  "neurosurgery":     ["mri", "ct", "operating microscope", "navigation", "icu"],
+  "obstetrics":       ["ultrasound", "ctg", "delivery table", "incubator", "labor room"],
+  "gynecology":       ["ultrasound", "colposcope", "ot", "labor room"],
+  "pediatrics":       ["incubator", "phototherapy", "warmer", "nicu"],
+  "neonatal":         ["incubator", "warmer", "phototherapy", "ventilator", "nicu", "cpap"],
+  "ophthalmology":    ["slit lamp", "phaco", "yag", "tonometer", "fundus"],
+  "pulmonology":      ["spirometer", "ventilator", "bipap", "cpap", "bronchoscope"],
+  "gastroenterology": ["endoscope", "colonoscope", "gastroscope", "ercp"],
+  "urology":          ["cystoscope", "lithotripter", "uro flowmetry"],
+  "ent":              ["audiometer", "endoscope", "tympanometer"],
+  "dermatology":      ["dermatoscope", "laser"],
+  "dental":           ["dental chair", "x-ray", "rvg", "opg", "scaler"],
+  "trauma":           ["x-ray", "ct", "icu", "ventilator", "blood bank", "ot"],
+  "icu":              ["ventilator", "monitor", "defibrillator", "infusion pump"]
+}
