@@ -82,16 +82,35 @@ def _openai_client() -> OpenAI | None:
 @st.cache_data(ttl=600, show_spinner=False)
 def run_sql(sql: str) -> pd.DataFrame:
     if not WAREHOUSE_ID:
+        st.warning("SQL warehouse is not configured. Attach `pramana-sql-warehouse` to the app.")
         return pd.DataFrame()
     w = _workspace_client()
     try:
         res = w.statement_execution.execute_statement(
-            warehouse_id=WAREHOUSE_ID, statement=sql, wait_timeout="30s",
+            warehouse_id=WAREHOUSE_ID,
+            statement=sql,
+            wait_timeout="10s",
+            on_wait_timeout="CONTINUE",
         )
+        for _ in range(24):
+            state = str(getattr(getattr(res, "status", None), "state", "") or "").upper()
+            if "SUCCEEDED" in state or getattr(res, "manifest", None) is not None:
+                break
+            if any(s in state for s in ("FAILED", "CANCELED", "CLOSED")):
+                message = getattr(getattr(res, "status", None), "error", None)
+                st.warning(f"SQL statement did not complete: {state} {message or ''}")
+                return pd.DataFrame()
+            statement_id = getattr(res, "statement_id", None)
+            if not statement_id:
+                break
+            time.sleep(1)
+            res = w.statement_execution.get_statement(statement_id)
+
         manifest = getattr(res, "manifest", None)
         schema = getattr(manifest, "schema", None)
         columns = getattr(schema, "columns", None) or []
         if not columns:
+            st.warning("SQL query returned no schema. Check warehouse permissions and table availability.")
             return pd.DataFrame()
         cols = [c.name for c in columns]
         rows = (res.result.data_array or []) if res.result else []
