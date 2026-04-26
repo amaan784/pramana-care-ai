@@ -332,8 +332,10 @@ CUSTOM_CSS = """
         display: inline-flex; align-items: center; gap: 8px;
         transition: transform 200ms ease, box-shadow 200ms ease;
         box-shadow: var(--shadow);
+        text-decoration: none;
+        cursor: pointer;
     }
-    .cta-primary:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
+    .cta-primary:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); color: var(--bg); text-decoration: none; }
     .cta-secondary {
         background: var(--surface);
         color: var(--text);
@@ -344,8 +346,10 @@ CUSTOM_CSS = """
         border: 1px solid var(--border-strong);
         display: inline-flex; align-items: center; gap: 8px;
         transition: transform 200ms ease, border-color 200ms ease;
+        text-decoration: none;
+        cursor: pointer;
     }
-    .cta-secondary:hover { transform: translateY(-2px); border-color: var(--brand); }
+    .cta-secondary:hover { transform: translateY(-2px); border-color: var(--brand); color: var(--text); text-decoration: none; }
 
     .stats-strip {
         margin: 36px auto 0 auto;
@@ -868,7 +872,7 @@ class Facility:
 # Real backend loaders (replace old mock layer)
 # ──────────────────────────────────────────────────────────────────────────────
 
-_FACILITY_LIMIT = 500
+_FACILITY_LIMIT = 3000
 
 
 def _coerce_array(val) -> list[str]:
@@ -1145,9 +1149,9 @@ def topnav():
                 <div class="topnav-name">PramanaCare<span class="dot">.ai</span></div>
             </div>
             <div class="topnav-right">
-                <span class="topnav-link">Product</span>
-                <span class="topnav-link">Methodology</span>
-                <span class="topnav-link">Demo</span>
+                <a class="topnav-link" href="#product">Product</a>
+                <a class="topnav-link" href="#methodology">Methodology</a>
+                <a class="topnav-link" href="#demos">Demo</a>
                 <span class="topnav-pill"><span class="live-dot"></span> Vector index live</span>
             </div>
         </div>
@@ -1326,7 +1330,7 @@ with tab_home:
     st.markdown(
         f"""
         <div class="home-hero">
-            <div class="hero-eyebrow"><span class="live-dot"></span> Built on Databricks · MIT × Databricks for Good</div>
+            <div class="hero-eyebrow"><span class="live-dot"></span> {n_facilities:,} facilities verified · 8 contradiction rules · row-level citations</div>
             <h1 class="hero-headline">
                 Healthcare you can <em>trust.</em><br>
                 Down to the <span class="accent">claim.</span>
@@ -1338,8 +1342,8 @@ with tab_home:
                 can see the deserts before the headlines do.
             </p>
             <div class="hero-cta-row">
-                <span class="cta-primary">Open the live demo →</span>
-                <span class="cta-secondary">How it works</span>
+                <a class="cta-primary" href="#demos">Open the live demo →</a>
+                <a class="cta-secondary" href="#methodology">How it works</a>
             </div>
             <div class="stats-strip">
                 <div>
@@ -1366,7 +1370,7 @@ with tab_home:
 
     st.markdown(
         """
-        <div class="home-section">
+        <div class="home-section" id="product">
             <div class="eyebrow">The problem</div>
             <h2>Most facility data lies — quietly.</h2>
             <p class="sec-tag">
@@ -1384,7 +1388,7 @@ with tab_home:
 
     st.markdown(
         """
-        <div class="home-section">
+        <div class="home-section" id="methodology">
             <div class="eyebrow">How it works</div>
             <h2>Five layers · one source of truth.</h2>
             <p class="sec-tag">
@@ -1426,7 +1430,7 @@ with tab_home:
 
     st.markdown(
         """
-        <div class="home-section">
+        <div class="home-section" id="demos">
             <div class="eyebrow">What it shows</div>
             <h2>Three demos. Three different kinds of truth.</h2>
             <p class="sec-tag">Click any tab above — the system is wired to the live gold tables.</p>
