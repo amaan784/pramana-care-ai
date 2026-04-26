@@ -12,7 +12,7 @@ class Facility(BaseModel):
     name: Optional[str] = None
     facility_type: Optional[str] = None
     state: Optional[str] = None
-    city: Optional[str] = None
+    city: Optional[str] = Field(default=None, description="City / district-HQ proxy from address_city")
     pin: Optional[str] = Field(default=None, description="Always string; preserves leading zeros")
     latitude: Optional[float] = None
     longitude: Optional[float] = None

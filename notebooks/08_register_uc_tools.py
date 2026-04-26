@@ -1,12 +1,7 @@
 # Databricks notebook source
 # MAGIC %md
 # MAGIC # 08 — Register UC tools
-# MAGIC Registers the 4 Unity Catalog functions used by the agent + Genie.
-# MAGIC
-# MAGIC Facility search is provided separately by `VectorSearchRetrieverTool` in
-# MAGIC `src/pramana/agent/agent.py`, not by a UC Python function. UC Python UDFs do
-# MAGIC not inherit notebook `%pip` packages, so `databricks-vectorsearch` is not
-# MAGIC importable inside a UC UDF sandbox.
+# MAGIC Registers the 4 Unity Catalog verifier functions used by the agent + Genie.
 
 # COMMAND ----------
 # MAGIC %pip install -q unitycatalog-langchain[databricks]>=0.3.0 databricks-vectorsearch>=0.50
@@ -17,6 +12,7 @@ import sys
 sys.path.insert(0, "../src")
 from pramana.config import CATALOG, SCHEMA
 from pramana.tools.registration import register_all
+from pramana.config import CATALOG, SCHEMA
 
 NS = f"{CATALOG}.{SCHEMA}"
 
@@ -40,4 +36,3 @@ print(spark.sql(f"SELECT {NS}.geo_radius(25.59, 85.13, 25.0, 'cardiology', 5) AS
 
 print("\nparse_messy_field:")
 print(spark.sql(f"SELECT {NS}.parse_messy_field('24x7 emergency, ICU, MRI, Dr. Sharma cardiology, W.HO award 2019') AS r").collect()[0][0][:600])
-

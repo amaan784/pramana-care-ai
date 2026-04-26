@@ -31,7 +31,7 @@ def geo_radius(lat: float, lon: float, radius_km: float,
     """
     import json
     import math
-    import os
+    from pramana.config import CATALOG, SCHEMA
     from pyspark.sql import SparkSession
 
     cat = os.environ.get("PRAMANA_CATALOG", "workspace")
@@ -62,7 +62,7 @@ def geo_radius(lat: float, lon: float, radius_km: float,
         ST_Point(longitude, latitude)
       ) / 1000.0 AS distance_km,
       specialties
-    FROM {cat}.{sch}.gold_facilities
+    FROM {CATALOG}.{SCHEMA}.gold_facilities
     WHERE h3_8 IN (SELECT hex FROM ring)
       {spec_clause}
     HAVING distance_km <= {float(radius_km)}

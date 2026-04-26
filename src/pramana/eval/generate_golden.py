@@ -7,8 +7,7 @@ import pandas as pd
 
 from pramana.config import SOURCE_TEXT_TABLE
 
-
-def seed_from_corpus(text_table: str = SOURCE_TEXT_TABLE,
+def seed_from_corpus(text_table: str = "workspace.pramana.silver_facilities_text",
                       n: int = 15) -> pd.DataFrame:
     from pyspark.sql import SparkSession
     from databricks.agents.evals import generate_evals_df
@@ -25,7 +24,8 @@ def seed_from_corpus(text_table: str = SOURCE_TEXT_TABLE,
     question_guidelines = (
         "- Mix discovery (e.g. nearest oncology in Bihar), verification "
         "(does X actually have ICU?), and audit (find facilities with bad coords) questions.\n"
-        "- Some questions should target the known dataset bugs: 'farmacy' typo, 'W.HO award' fakes."
+        "- Target known data issues: 'farmacy' typo, ghost hospitals, specialty-without-equipment, and cross-state coordinate mismatches. "
+        "For fabricated awards, expect 0 matches in this snapshot."
     )
     return generate_evals_df(
         docs=docs,

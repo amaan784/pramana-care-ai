@@ -144,8 +144,8 @@ with tab_audit:
     st.header("We audited our own data")
     st.caption(
         "The agent doesn't just trust the input — it scores every row against 8 rules and "
-        "exposes the breakdown. ~23% of coordinates are systematically off, concentrated in "
-        "NITI Aspirational Districts."
+        "exposes the breakdown. This snapshot has 51 cross-state coordinate mismatches "
+        "(0.51%) and 0 outside-India coordinates."
     )
 
     audit_sql = f"""
@@ -190,7 +190,7 @@ with tab_audit:
     m1.metric("'farmacy' typo entries", int(farmacy.iloc[0]["n"]) if not farmacy.empty else 0)
     m2.metric("HIGH-severity contradictions", rc.get("HIGH", 0))
     m3.metric(
-        "Coordinate errors >1km", "23%",
-        "concentrated in 7 NITI Aspirational Districts",
+        "Cross-state coordinate mismatches", "51",
+        "0 outside India bounding box",
         delta_color="inverse",
     )

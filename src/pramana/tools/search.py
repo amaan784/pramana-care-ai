@@ -13,25 +13,10 @@ import json
 def search_facilities(query: str, k: int) -> str:
     """Return top-k facilities matching free-text ``query`` as a JSON list.
 
-    Performs a hybrid (vector + BM25) search against the Delta-Sync index
-    ``facilities_idx`` over ``silver_facilities_text``.
-
-    Args:
-        query: Natural-language query describing the facility, capability or
-            location of interest. Examples: ``"cardiac surgery in Bihar"``,
-            ``"primary health centre near Patna"``, ``"oncology hospital
-            Maharashtra"``.
-        k: Number of top hits to return, ordered by hybrid score. Pass 8 if
-            the user did not specify how many results they want; reasonable
-            range is 1 to 50.
-
-    Returns:
-        JSON string with keys ``query``, ``k`` and ``results`` (a list of dicts
-        with ``facility_id``, ``name``, ``city``, ``state``, ``facility_type``
-        and ``description``).
+    Local/notebook-only helper. The deployed agent uses
+    `VectorSearchRetrieverTool` directly.
     """
     import os
-
     from databricks.vector_search.client import VectorSearchClient
 
     cat = os.environ.get("PRAMANA_CATALOG", "workspace")
@@ -39,6 +24,9 @@ def search_facilities(query: str, k: int) -> str:
     index = os.environ.get("PRAMANA_INDEX", f"{cat}.{sch}.facilities_idx")
 
     client = VectorSearchClient(disable_notice=True)
+    cat = os.environ.get("PRAMANA_CATALOG", "workspace")
+    sch = os.environ.get("PRAMANA_SCHEMA", "pramana")
+    index = os.environ.get("PRAMANA_INDEX", f"{cat}.{sch}.facilities_idx")
     idx = client.get_index(index_name=index)
     res = idx.similarity_search(
         query_text=query,

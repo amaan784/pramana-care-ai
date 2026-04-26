@@ -240,28 +240,8 @@ def trust_score(flags: list[dict]) -> int:
 
 
 def score_claim_consistency(facility_id: str) -> str:
-    """**Local / tests only** — uses PySpark. The Unity Catalog tool with this name
-    is registered as a **SQL** function in ``uc_sql_register.py`` (materialised
-    ``gold_facilities``) because UC Python UDFs cannot call ``spark.sql``.
-
-    Run all 8 consistency rules (R1-R8) for a single facility and return a
-    JSON envelope with its trust score and any flags fired.
-
-    Reads the row from ``silver_facilities_clean`` and the state bounding-box
-    table ``ref_state_bbox``. Catalog/schema default to ``workspace.pramana``;
-    override with ``PRAMANA_CATALOG`` / ``PRAMANA_SCHEMA`` if needed.
-
-    Args:
-        facility_id: Pramana-synthesised identifier of the form ``F######``
-            (zero-padded to 6 digits, e.g. ``"F000123"``). Required. If the id
-            is not found, returns ``{"facility_id": <id>, "error": "not found"}``.
-
-    Returns:
-        JSON string with keys ``facility_id``, ``trust_score`` (int 0-100; lower
-        is worse) and ``flags`` (list of dicts with ``rule_id``, ``severity``,
-        ``message``, ``evidence`` and ``citation_column``).
-    """
-    import os
+    """Local/notebook entrypoint. UC uses the SQL function registered in notebook 08."""
+    from pramana.config import CATALOG, SCHEMA
     from pyspark.sql import SparkSession
 
     cat = os.environ.get("PRAMANA_CATALOG", "workspace")
@@ -269,7 +249,7 @@ def score_claim_consistency(facility_id: str) -> str:
 
     spark = SparkSession.builder.getOrCreate()
     row = spark.sql(
-        f"SELECT * FROM {cat}.{sch}.silver_facilities_clean WHERE facility_id = :fid LIMIT 1",
+        f"SELECT * FROM {CATALOG}.{SCHEMA}.silver_facilities_clean WHERE facility_id = :fid LIMIT 1",
         args={"fid": facility_id},
     ).collect()
     if not row:
@@ -277,7 +257,7 @@ def score_claim_consistency(facility_id: str) -> str:
     d = row[0].asDict(recursive=True)
     try:
         bbox_rows = spark.sql(
-            f"SELECT state, min_lat, max_lat, min_lon, max_lon FROM {cat}.{sch}.ref_state_bbox"
+            f"SELECT state, min_lat, max_lat, min_lon, max_lon FROM {CATALOG}.{SCHEMA}.ref_state_bbox"
         ).collect()
         bbox = {r["state"]: r.asDict() for r in bbox_rows}
     except Exception:

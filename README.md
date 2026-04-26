@@ -26,12 +26,11 @@ against the materialised lakehouse, not the raw spec):
 
 | Bug | Frequency (measured) | Impact |
 |---|---|---|
-| `facilityTypeId = "farmacy"` (typo of pharmacy) | **166 of 184 "pharmacies" (~90%)** | Any state-level pharmacy density analysis is off by 10× |
-| Hospital with `capacity=null` AND `numberDoctors=null` AND `equipment=[]` ("ghost capability") | **2,294 hospitals (22.9%)** | The single largest truth-gap pattern in the corpus |
-| Listed advanced specialty without expected equipment evidence | **R7: 2,880 unique facilities (28.8%) · R1: 1,069 (10.7%)** | "Specialty-without-evidence" — drives most MED severity flags |
-| Coordinates land in **wrong state** (claimed-state ↔ lat/lon mismatch) | **51 facilities (0.51%)** | Small absolute count but every one is a routing risk for an NGO planning a field visit. **0 rows fall outside the India bounding box.** |
-| `capacity` 99% null, `numberDoctors` 94% null, `yearEstablished` 92% null, `recency_of_page_update` 95% null | systemic fill-rate gap | Cannot infer hospital size or page freshness from structured fields alone |
-| Fabricated awards in `description` (`W.HO`, `ISO 9001:2025+`, `Nobel`, `UNESCO`) | **0 in this snapshot** (rule armed for future ingest cycles) | Pramana's response is the honest one — *no fabricated awards detected* — and the agent demonstrates refusal-without-fabrication rather than inventing matches |
+| `facilityTypeId = "farmacy"` (typo of pharmacy) | 166 of 184 "pharmacies" (~90%) | Any state-level pharmacy density analysis is off by 10× |
+| Fabricated awards in `description` (`W.HO award`, `ISO 9001:2025`) | 0 in this snapshot | Rule is armed for future ingests; the agent must not fabricate a bug |
+| Coordinates in the wrong claimed state | 51 rows (0.51%); 0 outside India | R3 catches cross-state mismatch without overstating the issue |
+| `capacity` 99% null, `numberDoctors` 94% null, `yearEstablished` 92% null | systemic | Cannot infer hospital size from structured fields alone |
+| Claimed advanced specialty (cardiac, oncology) with empty `equipment` | thousands | "Ghost capability" — the headline truth-gap pattern |
 | State distribution skewed | systemic | Per-million normalization required for honest comparison |
 
 A naive RAG bot will *repeat* these bugs. Pramana's job is to **catch them, cite
@@ -117,10 +116,8 @@ including R1-satisfied and R2-satisfied happy paths).
 
 ## 5. Data layers (Bronze → Silver → Gold)
 
-All in Unity Catalog `workspace.pramana` by default (Free Edition). Override
-with the `PRAMANA_CATALOG` / `PRAMANA_SCHEMA` env vars or the `catalog` / `schema`
-bundle variables in `databricks.yml`. Every column has a 1-sentence comment
-with example values — Genie quality is bottlenecked on column-comment quality.
+All in Unity Catalog `workspace.pramana`. Every column has a 1-sentence comment with
+example values — Genie quality is bottlenecked on column-comment quality.
 
 | Layer | Table | What it is |
 |---|---|---|
@@ -145,7 +142,7 @@ H3HexagonLayer requires strings, not the int64 form.
 |---|---|---|
 | `india_state_bbox.json` | Rule R3 + `silver_facilities_clean` validation | Detect coordinates falling in the wrong state. 35 states/UTs. |
 | `specialty_equipment.json` | Rule R7 | Map each specialty to expected equipment keywords (e.g. cardiology → ECG, echo, cath, angio). |
-| `aspirational_districts.json` | App audit metric + golden-set Q22 | The 112 NITI Aspirational Districts. Joined via `silver_facilities_clean.city ≈ AD-district-name` because the source has no `address_district` column — **61 of 112 AD names match a value in `address_city`, covering 339 facilities** in the corpus. Honest disclosure: this is a partial overlay, not a full district join. |
+| `aspirational_districts.json` | App audit metric + golden-set Q22 | The 112 NITI Aspirational Districts. Used as a partial overlay via `city` / district-HQ proxy because the source has no reliable district field. |
 | `census_state_pop.json` | Genie + golden-set Q7, Q10 | Census 2011 state populations used as denominator for "facilities per million" rankings. |
 
 ---
@@ -170,20 +167,17 @@ H3HexagonLayer requires strings, not the int64 form.
 
 ### Tools
 
-All UC names below are written as `<catalog>.<schema>.<func>`; defaults are `workspace.pramana.*`.
-
 | Tool | Module | Purpose |
 |---|---|---|
-| `workspace.pramana.parse_messy_field` | `tools/parse_messy.py` | `ai_extract` over a single free-form text field; returns JSON dict of extracted attributes. |
-| `workspace.pramana.score_claim_consistency` | `tools/consistency.py` | Runs all 8 rules for one facility; returns trust_score + flags. |
-| `workspace.pramana.geo_radius` | `tools/geo.py` | Facilities within `radius_km` of `(lat, lon)`, optionally specialty-filtered. Uses `h3_kring` for coarse pre-filter then `ST_DistanceSpheroid` for exact distance. |
-| `workspace.pramana.cross_source_disagree` | `tools/cross_source.py` | Checks whether a free-text claim is supported by ≥2 of 6 source columns. |
+| `search_facilities` | `VectorSearchRetrieverTool` | Hybrid vector + BM25 search over `workspace.pramana.facilities_idx`. |
+| `workspace.pramana.parse_messy_field` | SQL UC function | `ai_extract` over a single free-form text field; returns JSON dict of extracted attributes. |
+| `workspace.pramana.score_claim_consistency` | SQL UC function | Returns materialized trust_score + flags for one facility. |
+| `workspace.pramana.geo_radius` | SQL UC function | Facilities within `radius_km` of `(lat, lon)`, optionally specialty-filtered. Uses `ST_DistanceSpheroid`. |
+| `workspace.pramana.cross_source_disagree` | SQL UC function | Checks whether a free-text claim is supported by ≥2 of 6 source columns. |
 
-These four UC functions are registered idempotently via `tools/registration.py`
-(notebook 08). `search_facilities` is exposed to the agent as a
-`VectorSearchRetrieverTool` over `workspace.pramana.facilities_idx`, not as a UC
-Python function. UC Python UDFs run in an isolated sandbox and do not inherit
-notebook `%pip` packages like `databricks-vectorsearch`.
+The four UC verifier tools are registered idempotently via `tools/registration.py`
+(notebook 08). Search is not a UC Python function; it is wired directly into the
+agent as a vector retriever.
 
 ---
 
@@ -322,6 +316,27 @@ databricks bundle run pramana_deploy_agent  -t prod   # 09 + 10
 # 4. start the App
 databricks apps deploy pramana-prod --source-code-path ./app
 ./scripts/restart_app.sh prod
+```
+
+### Required env-var cell in notebook 09
+
+When running `notebooks/09_log_and_deploy_agent.py` interactively, add this
+Python cell **after** the `%pip install ...` / `dbutils.library.restartPython()`
+cell and **before** importing `pramana.config`. `pramana.config` reads these
+values at import time, and the serving endpoint needs the same values at
+deploy time.
+
+```python
+import os
+
+os.environ["GENIE_SPACE_ID"] = ""
+os.environ["WAREHOUSE_ID"] = ""
+os.environ["PRAMANA_EXPERIMENT"] = "/Users/amaan784@gmail.com/pramana-traces"
+
+# Optional, but explicit:
+os.environ["PRAMANA_CATALOG"] = "workspace"
+os.environ["PRAMANA_SCHEMA"] = "pramana"
+os.environ["SERVING_ENDPOINT_NAME"] = "pramana-agent"
 ```
 
 After step 4 you'll have:
