@@ -240,14 +240,16 @@ def trust_score(flags: list[dict]) -> int:
 
 
 def score_claim_consistency(facility_id: str) -> str:
-    """Run all 8 consistency rules (R1-R8) for a single facility and return a
+    """**Local / tests only** — uses PySpark. The Unity Catalog tool with this name
+    is registered as a **SQL** function in ``uc_sql_register.py`` (materialised
+    ``gold_facilities``) because UC Python UDFs cannot call ``spark.sql``.
+
+    Run all 8 consistency rules (R1-R8) for a single facility and return a
     JSON envelope with its trust score and any flags fired.
 
     Reads the row from ``silver_facilities_clean`` and the state bounding-box
     table ``ref_state_bbox``. Catalog/schema default to ``workspace.pramana``;
-    override with ``PRAMANA_CATALOG`` / ``PRAMANA_SCHEMA`` if needed. Use this to verify a
-    specific facility's claims mid-conversation rather than scanning the whole
-    table.
+    override with ``PRAMANA_CATALOG`` / ``PRAMANA_SCHEMA`` if needed.
 
     Args:
         facility_id: Pramana-synthesised identifier of the form ``F######``

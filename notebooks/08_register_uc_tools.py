@@ -15,7 +15,7 @@ from pramana.tools.registration import register_all
 
 NS = f"{CATALOG}.{SCHEMA}"
 
-created = register_all()
+created = register_all(spark)
 for f in created:
     print("registered:", f)
 
