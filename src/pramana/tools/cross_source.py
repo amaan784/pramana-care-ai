@@ -31,6 +31,7 @@ def cross_source_disagree(facility_id: str, claim: str) -> str:
         ``sources_total`` (always 6).
     """
     import json
+    import os
     from pramana.config import CATALOG, SCHEMA
     from pyspark.sql import SparkSession
 
