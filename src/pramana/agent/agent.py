@@ -1,5 +1,6 @@
 """Pramana ResponsesAgent — the artifact that gets logged & deployed."""
 from __future__ import annotations
+import os
 from typing import Generator
 
 import mlflow
@@ -20,7 +21,8 @@ from pramana.agent.graph import build_graph
 from pramana.agent.genie_tool import genie_query
 from pramana.config import LLM, INDEX, UC_TOOLS
 
-mlflow.langchain.autolog()
+if os.getenv("PRAMANA_DISABLE_LANGCHAIN_AUTOLOG", "").lower() not in {"1", "true", "yes"}:
+    mlflow.langchain.autolog()
 
 
 def _to_chat_messages(items):

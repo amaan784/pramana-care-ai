@@ -49,13 +49,17 @@ input_example = {
 }
 
 with mlflow.start_run(run_name="pramana-agent"):
+    # Avoid MLflow's log-time input-example validation path. On Databricks this
+    # can trip a tracing/contextmanager bug ("generator didn't stop after
+    # throw()") before deployment. We validate the live endpoint after
+    # agents.deploy() instead.
+    os.environ["PRAMANA_DISABLE_LANGCHAIN_AUTOLOG"] = "1"
     info = mlflow.pyfunc.log_model(
         name="agent",
         python_model="../src/pramana/agent/agent.py",
         code_paths=["../src/pramana"],
         pip_requirements="../requirements.txt",
         resources=resources,
-        input_example=input_example,
     )
     print("logged:", info.model_uri)
 
