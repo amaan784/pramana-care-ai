@@ -18,7 +18,11 @@ service-principal gymnastics, so we drive this once by hand.
 
 ```sql
 -- Q1: How many facilities per state, ranked.
+-- Filter out the ~19 rows (0.19%) where state-alias resolution couldn't pick a
+-- canonical state — they would otherwise appear as a literal "null" bucket in
+-- the ranking. This matches Genie's own defensive default for state aggregations.
 SELECT state, COUNT(*) AS n FROM workspace.pramana.gold_facilities
+WHERE state IS NOT NULL
 GROUP BY state ORDER BY n DESC;
 
 -- Q2: How many entries had the 'farmacy' typo?
