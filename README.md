@@ -18,18 +18,20 @@ Mosaic AI Vector Search · Genie · Unity Catalog · Databricks Apps.
 
 ## 1. Problem
 
-The VillageFinder dataset is a useful but messy snapshot of 10,031 Indian
+The VillageFinder dataset is a useful but messy snapshot of 10,000 Indian
 healthcare facilities. NGO and government planners need to answer questions
 like *"can District Hospital Kishanganj actually perform a cardiac procedure
-tonight?"* — but the data has six known systemic bugs:
+tonight?"* — but the data has six measured systemic bugs (counts confirmed
+against the materialised lakehouse, not the raw spec):
 
-| Bug | Frequency | Impact |
+| Bug | Frequency (measured) | Impact |
 |---|---|---|
-| `facilityTypeId = "farmacy"` (typo of pharmacy) | 166 of 184 "pharmacies" (~90%) | Any state-level pharmacy density analysis is off by 10× |
-| Fabricated awards in `description` (`W.HO award`, `ISO 9001:2025`) | dozens | Trust-grade analytics inflated |
-| Coordinates outside India / wrong state | ~23% | Concentrated in NITI Aspirational Districts — the populations who need accuracy most are the most mis-mapped |
-| `capacity` 99% null, `numberDoctors` 94% null, `yearEstablished` 92% null | systemic | Cannot infer hospital size from structured fields alone |
-| Claimed advanced specialty (cardiac, oncology) with empty `equipment` | thousands | "Ghost capability" — the headline truth-gap pattern |
+| `facilityTypeId = "farmacy"` (typo of pharmacy) | **166 of 184 "pharmacies" (~90%)** | Any state-level pharmacy density analysis is off by 10× |
+| Hospital with `capacity=null` AND `numberDoctors=null` AND `equipment=[]` ("ghost capability") | **2,294 hospitals (22.9%)** | The single largest truth-gap pattern in the corpus |
+| Listed advanced specialty without expected equipment evidence | **R7: 2,880 unique facilities (28.8%) · R1: 1,069 (10.7%)** | "Specialty-without-evidence" — drives most MED severity flags |
+| Coordinates land in **wrong state** (claimed-state ↔ lat/lon mismatch) | **51 facilities (0.51%)** | Small absolute count but every one is a routing risk for an NGO planning a field visit. **0 rows fall outside the India bounding box.** |
+| `capacity` 99% null, `numberDoctors` 94% null, `yearEstablished` 92% null, `recency_of_page_update` 95% null | systemic fill-rate gap | Cannot infer hospital size or page freshness from structured fields alone |
+| Fabricated awards in `description` (`W.HO`, `ISO 9001:2025+`, `Nobel`, `UNESCO`) | **0 in this snapshot** (rule armed for future ingest cycles) | Pramana's response is the honest one — *no fabricated awards detected* — and the agent demonstrates refusal-without-fabrication rather than inventing matches |
 | State distribution skewed | systemic | Per-million normalization required for honest comparison |
 
 A naive RAG bot will *repeat* these bugs. Pramana's job is to **catch them, cite
@@ -143,7 +145,7 @@ H3HexagonLayer requires strings, not the int64 form.
 |---|---|---|
 | `india_state_bbox.json` | Rule R3 + `silver_facilities_clean` validation | Detect coordinates falling in the wrong state. 35 states/UTs. |
 | `specialty_equipment.json` | Rule R7 | Map each specialty to expected equipment keywords (e.g. cardiology → ECG, echo, cath, angio). |
-| `aspirational_districts.json` | App audit metric + golden-set Q22 | The 112 NITI Aspirational Districts. Surfaces the bias finding that ~23% of bad coords concentrate in these districts. |
+| `aspirational_districts.json` | App audit metric + golden-set Q22 | The 112 NITI Aspirational Districts. Joined via `silver_facilities_clean.city ≈ AD-district-name` because the source has no `address_district` column — **61 of 112 AD names match a value in `address_city`, covering 339 facilities** in the corpus. Honest disclosure: this is a partial overlay, not a full district join. |
 | `census_state_pop.json` | Genie + golden-set Q7, Q10 | Census 2011 state populations used as denominator for "facilities per million" rankings. |
 
 ---
@@ -267,11 +269,11 @@ pramana/
 2. **"Which districts in Bihar have zero functional oncology coverage within 50 km?"**
    → Genie aggregation × `geo_radius` × Aspirational-Districts overlay. *Social Impact.*
 3. **"Show me every facility whose listed coordinates fall outside its claimed state."**
-   → R3 at scale; counts cross-tabulated with NITI Aspirational Districts. *IDP, Social Impact.*
+   → R3 at scale; **51 cross-state mismatches** confirmed in the lakehouse, cross-tabulated with NITI Aspirational Districts (note: 0 rows outside the India bounding box — every facility's lat/lon is *somewhere* in India, just not always its claimed state). *IDP, Social Impact.*
 4. **"How many entries have the `farmacy` typo and what's the impact on pharmacy supply analytics?"**
-   → R5 + per-state recompute showing the 10× undercount. *IDP.*
-5. **"Audit the dataset for fabricated certifications."**
-   → R6 + `ai_classify` validation. *Discovery/Verification.*
+   → R5 + per-state recompute showing the 10× undercount (166 / 184 = 90.2%). *IDP.*
+5. **"Audit the dataset for fabricated certifications like W.HO award or ISO 9001:2025+."**
+   → R6 fires **0 times** on this snapshot. The agent returns *"No fabricated awards detected in this snapshot of 10,000 facilities. Confidence: high."* — this demonstrates **honest refusal rather than fabrication**, which is the entire point of a Truth-Check Engine. The rule is armed for future ingest cycles. *Discovery/Verification.*
 
 Eval headline: `notebooks/10_eval.py` runs the same 25 questions through
 (a) bare Llama 3.3 70B with no tools and (b) the full Pramana agent, and
