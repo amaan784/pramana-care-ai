@@ -10,11 +10,27 @@ import json
 from pramana.config import INDEX
 
 
-def search_facilities(query: str, k: int = 8) -> str:
-    """Return top-k facilities matching free-text `query` as JSON list.
+def search_facilities(query: str, k: int) -> str:
+    """Return top-k facilities matching free-text ``query`` as a JSON list.
 
-    Registered as UC function `{CATALOG}.{SCHEMA}.search_facilities`,
-    where CATALOG/SCHEMA come from `pramana.config` (default: `workspace.pramana`).
+    Registered as UC function ``{CATALOG}.{SCHEMA}.search_facilities`` (default
+    ``workspace.pramana.search_facilities``). Performs a hybrid (vector + BM25)
+    search against the Delta-Sync index ``facilities_idx`` over
+    ``silver_facilities_text``.
+
+    Args:
+        query: Natural-language query describing the facility, capability or
+            location of interest. Examples: ``"cardiac surgery in Bihar"``,
+            ``"primary health centre near Patna"``, ``"oncology hospital
+            Maharashtra"``.
+        k: Number of top hits to return, ordered by hybrid score. Pass 8 if
+            the user did not specify how many results they want; reasonable
+            range is 1 to 50.
+
+    Returns:
+        JSON string with keys ``query``, ``k`` and ``results`` (a list of dicts
+        with ``facility_id``, ``name``, ``city``, ``state``, ``facility_type``
+        and ``description``).
     """
     from databricks.vector_search.client import VectorSearchClient
     client = VectorSearchClient(disable_notice=True)

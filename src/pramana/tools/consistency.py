@@ -239,7 +239,25 @@ def trust_score(flags: list[dict]) -> int:
 
 
 def score_facility(facility_id: str) -> str:
-    """UC-callable entrypoint. Reads silver.facilities_clean for one id, returns JSON."""
+    """Run all 8 consistency rules (R1-R8) for a single facility and return a
+    JSON envelope with its trust score and any flags fired.
+
+    Reads the row from ``silver_facilities_clean`` and the state bounding-box
+    table ``ref_state_bbox`` from the catalog/schema configured in
+    ``pramana.config`` (default ``workspace.pramana``). Use this to verify a
+    specific facility's claims mid-conversation rather than scanning the whole
+    table.
+
+    Args:
+        facility_id: Pramana-synthesised identifier of the form ``F######``
+            (zero-padded to 6 digits, e.g. ``"F000123"``). Required. If the id
+            is not found, returns ``{"facility_id": <id>, "error": "not found"}``.
+
+    Returns:
+        JSON string with keys ``facility_id``, ``trust_score`` (int 0-100; lower
+        is worse) and ``flags`` (list of dicts with ``rule_id``, ``severity``,
+        ``message``, ``evidence`` and ``citation_column``).
+    """
     from pyspark.sql import SparkSession
     from pramana.config import CATALOG, SCHEMA
     spark = SparkSession.builder.getOrCreate()
