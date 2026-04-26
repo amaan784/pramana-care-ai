@@ -72,7 +72,7 @@ def baseline_predict_fn(question: str) -> str:
 
 # COMMAND ----------
 from databricks.sdk import WorkspaceClient
-from openai import OpenAI
+import requests
 
 w = WorkspaceClient()
 
@@ -92,28 +92,30 @@ if not token:
         .get()
     )
 
-client = OpenAI(
-    api_key=token,
-    base_url=f"{w.config.host}/serving-endpoints",
+serving_invocations_url = (
+    f"{w.config.host.rstrip('/')}/serving-endpoints/{SERVING_ENDPOINT_NAME}/invocations"
 )
 
 def pramana_predict_fn(question: str) -> str:
-    # The deployed model is an MLflow ResponsesAgent, so the endpoint schema is
-    # `input`, not OpenAI chat-completions `messages`.
-    r = client.responses.create(
-        model=SERVING_ENDPOINT_NAME,
-        input=[{"role": "user", "content": question}],
-        timeout=120,
+    # The deployed model is an MLflow ResponsesAgent. Call invocations directly
+    # so the payload is the endpoint's native `input` schema, never `messages`.
+    resp = requests.post(
+        serving_invocations_url,
+        headers={"Authorization": f"Bearer {token}"},
+        json={"input": [{"role": "user", "content": question}]},
+        timeout=180,
     )
-    if getattr(r, "output_text", None):
-        return r.output_text
+    resp.raise_for_status()
+    payload = resp.json()
+    if payload.get("output_text"):
+        return payload["output_text"]
     chunks = []
-    for item in getattr(r, "output", []) or []:
-        for c in getattr(item, "content", []) or []:
-            text = getattr(c, "text", None)
+    for item in payload.get("output", []) or []:
+        for c in item.get("content", []) or []:
+            text = c.get("text")
             if text:
                 chunks.append(text)
-    return "\n".join(chunks) or str(r)
+    return "\n".join(chunks) or json.dumps(payload)
 
 # COMMAND ----------
 scorers = [RetrievalGroundedness(), RelevanceToQuery(), Safety(), Correctness(), *PRAMANA_JUDGES]

@@ -84,12 +84,21 @@ def run_sql(sql: str) -> pd.DataFrame:
     if not WAREHOUSE_ID:
         return pd.DataFrame()
     w = _workspace_client()
-    res = w.statement_execution.execute_statement(
-        warehouse_id=WAREHOUSE_ID, statement=sql, wait_timeout="30s",
-    )
-    cols = [c.name for c in (res.manifest.schema.columns or [])]
-    rows = (res.result.data_array or []) if res.result else []
-    return pd.DataFrame(rows, columns=cols)
+    try:
+        res = w.statement_execution.execute_statement(
+            warehouse_id=WAREHOUSE_ID, statement=sql, wait_timeout="30s",
+        )
+        manifest = getattr(res, "manifest", None)
+        schema = getattr(manifest, "schema", None)
+        columns = getattr(schema, "columns", None) or []
+        if not columns:
+            return pd.DataFrame()
+        cols = [c.name for c in columns]
+        rows = (res.result.data_array or []) if res.result else []
+        return pd.DataFrame(rows, columns=cols)
+    except Exception as e:  # noqa: BLE001
+        st.warning(f"SQL query failed: {type(e).__name__}: {e}")
+        return pd.DataFrame()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
