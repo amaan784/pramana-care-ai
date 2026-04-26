@@ -2,7 +2,7 @@
 # MAGIC %md
 # MAGIC # 10 — Evaluation
 # MAGIC Baseline (bare Llama 3.3 70B, no tools) vs Intervention (full Pramana agent).
-# MAGIC Produces the headline delta on RetrievalGroundedness, Correctness, and our custom judges.
+# MAGIC Produces the headline delta on Correctness, Relevance, Safety, and our custom judges.
 
 # COMMAND ----------
 # MAGIC %pip install -q -r ../requirements.txt
@@ -21,7 +21,7 @@ import sys, json, mlflow, pandas as pd
 sys.path.insert(0, "../src")
 from pathlib import Path
 
-from mlflow.genai.scorers import RetrievalGroundedness, RelevanceToQuery, Safety, Correctness
+from mlflow.genai.scorers import RelevanceToQuery, Safety, Correctness
 from databricks_langchain import ChatDatabricks
 
 from pramana.config import LLM, EXPERIMENT_PATH, SERVING_ENDPOINT_NAME
@@ -118,7 +118,7 @@ def pramana_predict_fn(question: str) -> str:
     return "\n".join(chunks) or json.dumps(payload)
 
 # COMMAND ----------
-scorers = [RetrievalGroundedness(), RelevanceToQuery(), Safety(), Correctness(), *PRAMANA_JUDGES]
+scorers = [RelevanceToQuery(), Safety(), Correctness(), *PRAMANA_JUDGES]
 
 with mlflow.start_run(run_name="baseline_llama_no_tools"):
     base_res = mlflow.genai.evaluate(

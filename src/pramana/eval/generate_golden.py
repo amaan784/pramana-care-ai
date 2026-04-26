@@ -44,4 +44,4 @@ def merge_with_handwritten(seed_df: pd.DataFrame, jsonl_path: str) -> pd.DataFra
             if line:
                 extra.append(json.loads(line))
     extra_df = pd.DataFrame(extra)
-    return pd.concat([seed_df, extra_df], ignore_index=True)
+    return pd.concat([extra_df, seed_df], ignore_index=True)
