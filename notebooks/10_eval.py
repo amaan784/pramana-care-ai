@@ -51,8 +51,24 @@ if "question" not in golden.columns:
         raise ValueError(f"No question-like column found. Columns: {list(golden.columns)}")
 golden = golden[golden["question"].notna()].reset_index(drop=True)
 
+# mlflow.genai.evaluate expects:
+#   - `inputs`: dict keyed by predict_fn argument names
+#   - `expectations`: dict containing expected_response or expected_facts for
+#     built-in correctness / groundedness scorers.
+if "expected_facts" not in golden.columns:
+    golden["expected_facts"] = [[] for _ in range(len(golden))]
+
+golden["inputs"] = golden["question"].apply(lambda q: {"question": q})
+golden["expectations"] = golden["expected_facts"].apply(
+    lambda facts: {
+        "expected_facts": facts if isinstance(facts, list) else [str(facts)]
+    }
+)
+
+eval_data = golden[["inputs", "expectations"]].copy()
+
 print(f"golden rows: {len(golden)}")
-display(golden.head(5))
+display(golden[["question", "expected_facts"]].head(5))
 
 # COMMAND ----------
 def baseline_predict_fn(question: str) -> str:
@@ -105,7 +121,7 @@ scorers = [RetrievalGroundedness(), RelevanceToQuery(), Safety(), Correctness(),
 
 with mlflow.start_run(run_name="baseline_llama_no_tools"):
     base_res = mlflow.genai.evaluate(
-        data=golden,
+        data=eval_data,
         predict_fn=baseline_predict_fn,
         scorers=scorers,
     )
@@ -114,7 +130,7 @@ with mlflow.start_run(run_name="baseline_llama_no_tools"):
 
 with mlflow.start_run(run_name="pramana_agent_full"):
     int_res = mlflow.genai.evaluate(
-        data=golden,
+        data=eval_data,
         predict_fn=pramana_predict_fn,
         scorers=scorers,
     )
