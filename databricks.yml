@@ -6,8 +6,8 @@ include:
 
 variables:
   catalog:
-    description: Unity Catalog where Pramana lives.
-    default: main
+    description: Unity Catalog where Pramana lives. Free Edition uses 'workspace'.
+    default: workspace
   schema:
     description: UC schema.
     default: pramana

@@ -106,14 +106,46 @@ def test_r7_specialty_without_equipment():
     assert "R7" in _ids(evaluate_facility(row, BBOX))
 
 
+def test_r7_camelcase_specialty_matches_real_data_shape():
+    """The dataset stores specialties as camelCase concatenated tokens like
+    'medicaloncology' / 'orthopedicsurgery' / 'neonatologyperinatalmedicine'.
+    R7 must catch these via substring match."""
+    for sp in ("medicaloncology", "orthopedicsurgery",
+               "neonatologyperinatalmedicine", "gynecologyandobstetrics"):
+        row = {"facility_id": f"T7-{sp}", "facility_type": "hospital", "state": "Bihar",
+               "specialties": [sp], "equipment": ["bandage"], "capability": [],
+               "description": "", "latitude": 25.5, "longitude": 85.0,
+               "capacity": 30, "number_doctors": 5}
+        assert "R7" in _ids(evaluate_facility(row, BBOX)), f"{sp} should fire R7"
+
+
+def test_r7_pediatricdentistry_does_not_false_positive():
+    """`pediatricdentistry` should NOT trigger the pediatric-NICU rule."""
+    row = {"facility_id": "T7-pd", "facility_type": "dentist", "state": "Bihar",
+           "specialties": ["pediatricdentistry"], "equipment": ["dental chair"],
+           "capability": [], "description": "", "latitude": 25.5, "longitude": 85.0}
+    assert "R7" not in _ids(evaluate_facility(row, BBOX))
+
+
 def test_r8_stale_low_signal():
     row = {"facility_id": "T8", "facility_type": "clinic", "state": "Bihar",
            "specialties": [], "equipment": [], "capability": [], "description": "",
            "latitude": 25.5, "longitude": 85.0,
-           "recency_of_page_update_months": 36,
-           "social_facebook": None, "social_twitter": None, "social_instagram": None,
-           "website": None}
+           "recency_months": 36,
+           "facebookLink": None, "twitterLink": None, "instagramLink": None,
+           "linkedinLink": None, "websites": None, "officialWebsite": None}
     assert "R8" in _ids(evaluate_facility(row, BBOX))
+
+
+def test_r8_silent_when_socials_present():
+    row = {"facility_id": "T8b", "facility_type": "clinic", "state": "Bihar",
+           "specialties": [], "equipment": ["x-ray"], "capability": [], "description": "",
+           "latitude": 25.5, "longitude": 85.0, "capacity": 10, "number_doctors": 1,
+           "recency_months": 3,
+           "facebookLink": "https://facebook.com/x", "twitterLink": None,
+           "instagramLink": None, "linkedinLink": None,
+           "websites": "https://x.com", "officialWebsite": None}
+    assert "R8" not in _ids(evaluate_facility(row, BBOX))
 
 
 def test_trust_score_math():

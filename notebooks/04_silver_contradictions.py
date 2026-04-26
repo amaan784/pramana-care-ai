@@ -17,10 +17,12 @@ CT = f"{CATALOG}.{SCHEMA}.silver_contradictions"
 TS = f"{CATALOG}.{SCHEMA}.silver_trust"
 
 # COMMAND ----------
+# Materialise the bbox dict on the driver. ~35 entries × 4 floats — small enough
+# to ride along in the UDF's closure, which is the only option on serverless
+# compute (sparkContext.broadcast is blocked by JVM_ATTRIBUTE_NOT_SUPPORTED).
 bbox_rows = spark.table(f"{CATALOG}.{SCHEMA}.ref_state_bbox").collect()
-bbox = {r["state"]: {"min_lat": r["min_lat"], "max_lat": r["max_lat"],
-                       "min_lon": r["min_lon"], "max_lon": r["max_lon"]} for r in bbox_rows}
-bbox_b = spark.sparkContext.broadcast(bbox)
+BBOX = {r["state"]: {"min_lat": r["min_lat"], "max_lat": r["max_lat"],
+                      "min_lon": r["min_lon"], "max_lon": r["max_lon"]} for r in bbox_rows}
 
 flag_schema = T.ArrayType(T.StructType([
     T.StructField("rule_id",         T.StringType()),
@@ -30,11 +32,15 @@ flag_schema = T.ArrayType(T.StructType([
     T.StructField("citation_column", T.StringType()),
 ]))
 
-@F.udf(returnType=flag_schema)
-def _flags_udf(row_json: str):
-    if not row_json:
-        return []
-    return evaluate_facility(json.loads(row_json), bbox_b.value)
+def _make_flags_udf(bbox):
+    @F.udf(returnType=flag_schema)
+    def _flags(row_json: str):
+        if not row_json:
+            return []
+        return evaluate_facility(json.loads(row_json), bbox)
+    return _flags
+
+_flags_udf = _make_flags_udf(BBOX)
 
 @F.udf(returnType=T.IntegerType())
 def _trust_udf(flags):

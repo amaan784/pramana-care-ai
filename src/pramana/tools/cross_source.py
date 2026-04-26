@@ -8,13 +8,40 @@ from __future__ import annotations
 
 
 def cross_source_disagree(facility_id: str, claim: str) -> str:
+    """Check whether a textual ``claim`` about a facility is corroborated across
+    multiple independent source columns.
+
+    Looks at ``specialties``, ``capability``, ``equipment``, ``procedure``,
+    ``description`` and the (``capacity`` OR ``number_doctors``) fill-rate.
+    Returns ``agree=True`` only if at least 2 of those 6 sources contain
+    substring evidence for the claim.
+
+    Args:
+        facility_id: Pramana-synthesised identifier of the form ``F######``
+            (zero-padded to 6 digits, e.g. ``"F000123"``). Required — the
+            function returns an error JSON if the id is not found in
+            ``silver_facilities_clean``.
+        claim: Short free-text claim to verify, e.g. ``"performs cardiac
+            surgery"`` or ``"24x7 emergency care"``. Words shorter than 4
+            characters are dropped from the substring match.
+
+    Returns:
+        JSON string with ``facility_id``, ``claim``, ``agree`` (bool),
+        ``sources_supporting`` (list of source names that hit) and
+        ``sources_total`` (always 6).
+    """
     import json
+    import os
     from pyspark.sql import SparkSession
+
+    cat = os.environ.get("PRAMANA_CATALOG", "workspace")
+    sch = os.environ.get("PRAMANA_SCHEMA", "pramana")
+
     spark = SparkSession.builder.getOrCreate()
     rows = spark.sql(
-        "SELECT specialties, capability, equipment, procedure, description, "
-        "capacity, number_doctors FROM main.pramana.silver_facilities_clean "
-        "WHERE facility_id = :fid LIMIT 1",
+        f"SELECT specialties, capability, equipment, procedure, description, "
+        f"capacity, number_doctors FROM {cat}.{sch}.silver_facilities_clean "
+        f"WHERE facility_id = :fid LIMIT 1",
         args={"fid": facility_id},
     ).collect()
     if not rows:

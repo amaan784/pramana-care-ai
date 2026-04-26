@@ -6,7 +6,7 @@ Override at runtime via env vars when needed (e.g. dev vs prod).
 from __future__ import annotations
 import os
 
-CATALOG: str = os.getenv("PRAMANA_CATALOG", "main")
+CATALOG: str = os.getenv("PRAMANA_CATALOG", "workspace")
 SCHEMA: str = os.getenv("PRAMANA_SCHEMA", "pramana")
 VOLUME: str = os.getenv("PRAMANA_VOLUME", "raw")
 

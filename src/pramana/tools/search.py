@@ -1,24 +1,48 @@
 """Hybrid vector search wrapper.
 
 The agent uses `databricks_langchain.VectorSearchRetrieverTool` directly
-(see agent/graph.py); this thin Python wrapper exists for the *batch*
-notebook code path and as a UC function for ad-hoc Genie/SQL use.
+(see agent/agent.py); this thin Python wrapper exists for local/notebook
+experiments only. It is **not** registered as a Unity Catalog Python function:
+UC Python UDF sandboxes do not inherit notebook `%pip` packages like
+`databricks-vectorsearch`.
 """
 from __future__ import annotations
 import json
 
 
-def search_facilities(query: str, k: int = 8) -> str:
-    """Return top-k facilities matching free-text `query` as JSON list.
+def search_facilities(query: str, k: int) -> str:
+    """Return top-k facilities matching free-text ``query`` as a JSON list.
 
-    Registered as UC function `main.pramana.search_facilities`.
+    Performs a hybrid (vector + BM25) search against the Delta-Sync index
+    ``facilities_idx`` over ``silver_facilities_text``.
+
+    Args:
+        query: Natural-language query describing the facility, capability or
+            location of interest. Examples: ``"cardiac surgery in Bihar"``,
+            ``"primary health centre near Patna"``, ``"oncology hospital
+            Maharashtra"``.
+        k: Number of top hits to return, ordered by hybrid score. Pass 8 if
+            the user did not specify how many results they want; reasonable
+            range is 1 to 50.
+
+    Returns:
+        JSON string with keys ``query``, ``k`` and ``results`` (a list of dicts
+        with ``facility_id``, ``name``, ``city``, ``state``, ``facility_type``
+        and ``description``).
     """
+    import os
+
     from databricks.vector_search.client import VectorSearchClient
+
+    cat = os.environ.get("PRAMANA_CATALOG", "workspace")
+    sch = os.environ.get("PRAMANA_SCHEMA", "pramana")
+    index = os.environ.get("PRAMANA_INDEX", f"{cat}.{sch}.facilities_idx")
+
     client = VectorSearchClient(disable_notice=True)
-    idx = client.get_index(index_name="main.pramana.facilities_idx")
+    idx = client.get_index(index_name=index)
     res = idx.similarity_search(
         query_text=query,
-        columns=["facility_id", "name", "district", "state", "facility_type", "description"],
+        columns=["facility_id", "name", "city", "state", "facility_type", "description"],
         num_results=int(k),
         query_type="HYBRID",
     )

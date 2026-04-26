@@ -1,31 +1,50 @@
 # Databricks notebook source
 # MAGIC %md
 # MAGIC # 02 — Silver clean
-# MAGIC Typo-fix `farmacy → pharmacy` (kept in audit column), parse JSON-array strings to ARRAY<STRING>
-# MAGIC via `from_json` (deterministic fast path) with `ai_extract` fallback for malformed rows,
-# MAGIC geo-validate, canonicalize specialties via `ai_classify`, explode claims into long form.
+# MAGIC * Typo-fix `farmacy → pharmacy` (raw kept in `facility_type_raw`).
+# MAGIC * Parse JSON-array strings to `ARRAY<STRING>` via deterministic `from_json`
+# MAGIC   (verified: 100% of non-null rows in specialties/procedure/equipment/capability
+# MAGIC   are valid JSON arrays — no LLM fallback needed).
+# MAGIC * Geo-validate; normalise the 162 dirty `state` values via `state_aliases.json`
+# MAGIC   (covers ~396 rows like 'Jammu And Kashmir', 'Punjab Region', 'Tamilnadu',
+# MAGIC   'Up', 'Mh', city-as-state values like 'Mumbai'/'Pune'/'Chennai').
+# MAGIC * Source `city` from `address_city` (the dataset has no `address_district`).
+# MAGIC * Derive `recency_months` from `recency_of_page_update` for R8.
 
 # COMMAND ----------
-import sys
+import sys, json, pathlib
 sys.path.insert(0, "../src")
 from pramana.config import CATALOG, SCHEMA
 
 BR = f"{CATALOG}.{SCHEMA}.bronze_facilities_raw"
 SC = f"{CATALOG}.{SCHEMA}.silver_facilities_clean"
 CL = f"{CATALOG}.{SCHEMA}.silver_claims_long"
+REF_BBOX    = f"{CATALOG}.{SCHEMA}.ref_state_bbox"
+REF_ALIASES = f"{CATALOG}.{SCHEMA}.ref_state_aliases"
 
 # COMMAND ----------
-# Reference table for state bbox (used by R3 and the Verifier)
-import json, pathlib
+# Reference: state bbox (used by R3 and the Verifier)
 state_bbox = json.loads(pathlib.Path("../data/reference/india_state_bbox.json").read_text(encoding="utf-8"))
-rows = [{"state": k, **v} for k, v in state_bbox.items()]
-(spark.createDataFrame(rows)
-    .write.mode("overwrite").saveAsTable(f"{CATALOG}.{SCHEMA}.ref_state_bbox"))
+(spark.createDataFrame([{"state": k, **v} for k, v in state_bbox.items()])
+    .write.mode("overwrite").saveAsTable(REF_BBOX))
+
+# Reference: state aliases (162 dirty values → canonical state names)
+aliases = json.loads(pathlib.Path("../data/reference/state_aliases.json").read_text(encoding="utf-8"))
+alias_rows = []
+for raw, canon in aliases.items():
+    if raw.startswith("_"):
+        continue
+    alias_rows.append({"alias": raw.lower(), "state": canon, "kind": "alias"})
+for raw, canon in (aliases.get("_city_to_state") or {}).items():
+    alias_rows.append({"alias": raw.lower(), "state": canon, "kind": "city"})
+(spark.createDataFrame(alias_rows)
+    .write.mode("overwrite").saveAsTable(REF_ALIASES))
+print(f"loaded {len(alias_rows)} state-alias rows")
 
 # COMMAND ----------
 spark.sql(f"""
 CREATE OR REPLACE TABLE {SC}
-COMMENT 'Silver facilities — typo-fixed, JSON arrays parsed, geo-validated, specialties canonicalized.'
+COMMENT 'Silver facilities — typo-fixed, JSON arrays parsed, geo-validated, state names normalized.'
 AS
 WITH base AS (
   SELECT
@@ -34,44 +53,72 @@ WITH base AS (
     LOWER(facilityTypeId)        AS facility_type_raw,
     CASE WHEN LOWER(facilityTypeId) = 'farmacy' THEN 'pharmacy'
          ELSE LOWER(facilityTypeId) END AS facility_type,
-    address_stateOrRegion AS state,
-    address_district      AS district,
-    CAST(address_postalCode AS STRING) AS pin,
+    address_stateOrRegion        AS state_raw,
+    address_city                 AS city,
+    CAST(address_zipOrPostcode AS STRING) AS pin,
     CAST(latitude  AS DOUBLE) AS latitude,
     CAST(longitude AS DOUBLE) AS longitude,
     description,
     CAST(capacity        AS INT) AS capacity,
     CAST(numberDoctors   AS INT) AS number_doctors,
     CAST(yearEstablished AS INT) AS year_established,
+    facebookLink, twitterLink, instagramLink, linkedinLink,
+    websites, officialWebsite,
+    try_cast(recency_of_page_update AS TIMESTAMP) AS recency_ts,
     specialties AS specialties_raw,
     procedure   AS procedure_raw,
     equipment   AS equipment_raw,
     capability  AS capability_raw
   FROM {BR}
 ),
+norm AS (
+  SELECT b.*,
+         coalesce(
+           bbox.state,
+           a1.state,
+           a2.state
+         ) AS state
+  FROM base b
+  LEFT JOIN {REF_BBOX} bbox ON bbox.state = b.state_raw
+  LEFT JOIN {REF_ALIASES} a1 ON a1.alias = lower(coalesce(b.state_raw, '')) AND a1.kind = 'alias'
+  LEFT JOIN {REF_ALIASES} a2 ON a2.alias = lower(coalesce(b.state_raw, '')) AND a2.kind = 'city'
+),
 parsed AS (
   SELECT *,
-    coalesce(try_cast(from_json(specialties_raw, 'array<string>') AS array<string>), array()) AS specialties_fast,
-    coalesce(try_cast(from_json(procedure_raw,   'array<string>') AS array<string>), array()) AS procedure_fast,
-    coalesce(try_cast(from_json(equipment_raw,   'array<string>') AS array<string>), array()) AS equipment_fast,
-    coalesce(try_cast(from_json(capability_raw,  'array<string>') AS array<string>), array()) AS capability_fast
-  FROM base
+    coalesce(
+      from_json(specialties_raw, 'array<string>'),
+      CASE WHEN specialties_raw IS NOT NULL AND length(trim(specialties_raw)) > 0
+           THEN split(regexp_replace(specialties_raw, '[\\\\[\\\\]"]', ''), '\\\\s*[,|]\\\\s*')
+           ELSE array() END
+    ) AS specialties,
+    coalesce(
+      from_json(procedure_raw, 'array<string>'),
+      CASE WHEN procedure_raw IS NOT NULL AND length(trim(procedure_raw)) > 0
+           THEN split(regexp_replace(procedure_raw, '[\\\\[\\\\]"]', ''), '\\\\s*[,|]\\\\s*')
+           ELSE array() END
+    ) AS procedure,
+    coalesce(
+      from_json(equipment_raw, 'array<string>'),
+      CASE WHEN equipment_raw IS NOT NULL AND length(trim(equipment_raw)) > 0
+           THEN split(regexp_replace(equipment_raw, '[\\\\[\\\\]"]', ''), '\\\\s*[,|]\\\\s*')
+           ELSE array() END
+    ) AS equipment,
+    coalesce(
+      from_json(capability_raw, 'array<string>'),
+      CASE WHEN capability_raw IS NOT NULL AND length(trim(capability_raw)) > 0
+           THEN split(regexp_replace(capability_raw, '[\\\\[\\\\]"]', ''), '\\\\s*[,|]\\\\s*')
+           ELSE array() END
+    ) AS capability
+  FROM norm
 )
 SELECT
-  facility_id, name, facility_type_raw, facility_type, state, district, pin,
+  facility_id, name, facility_type_raw, facility_type,
+  state_raw, state, city, pin,
   latitude, longitude, description, capacity, number_doctors, year_established,
-  CASE WHEN size(specialties_fast)=0 AND specialties_raw IS NOT NULL
-       THEN try_cast(ai_extract(specialties_raw, array('items'))['items'] AS array<string>)
-       ELSE specialties_fast END AS specialties,
-  CASE WHEN size(procedure_fast)=0  AND procedure_raw  IS NOT NULL
-       THEN try_cast(ai_extract(procedure_raw,  array('items'))['items'] AS array<string>)
-       ELSE procedure_fast  END AS procedure,
-  CASE WHEN size(equipment_fast)=0  AND equipment_raw  IS NOT NULL
-       THEN try_cast(ai_extract(equipment_raw,  array('items'))['items'] AS array<string>)
-       ELSE equipment_fast  END AS equipment,
-  CASE WHEN size(capability_fast)=0 AND capability_raw IS NOT NULL
-       THEN try_cast(ai_extract(capability_raw, array('items'))['items'] AS array<string>)
-       ELSE capability_fast END AS capability
+  facebookLink, twitterLink, instagramLink, linkedinLink, websites, officialWebsite,
+  recency_ts,
+  CAST(months_between(current_timestamp(), recency_ts) AS INT) AS recency_months,
+  specialties, procedure, equipment, capability
 FROM parsed
 """)
 
@@ -82,8 +129,9 @@ COMMENTS = {
     "name":              "Facility display name. May be unstructured.",
     "facility_type_raw": "Original facilityTypeId before typo-correction (e.g. 'farmacy').",
     "facility_type":     "Normalised type: hospital, clinic, dentist, doctor, pharmacy. 'farmacy' typo mapped to 'pharmacy'.",
-    "state":             "Indian state or union territory. Example: 'Bihar', 'Tamil Nadu'.",
-    "district":          "Administrative district. Example: 'Kishanganj'.",
+    "state_raw":         "Original address_stateOrRegion verbatim. Includes ~400 rows of dirty values (cities, abbreviations, mixed strings).",
+    "state":             "Canonical state name resolved via ref_state_bbox / ref_state_aliases. NULL when unresolvable.",
+    "city":              "Sourced from address_city. The dataset has no address_district column, so city ≈ district HQ for most rows.",
     "pin":               "Postal Index Number, STRING with leading zeros preserved. Example: '855107'.",
     "latitude":          "WGS84 latitude in decimal degrees. India range 6.5–35.5.",
     "longitude":         "WGS84 longitude in decimal degrees. India range 68.0–97.5.",
@@ -91,10 +139,12 @@ COMMENTS = {
     "capacity":          "Bed/seat capacity (INT). 99% null in source.",
     "number_doctors":    "Number of doctors (INT). 94% null in source.",
     "year_established":  "Year founded (INT). 92% null in source.",
-    "specialties":       "ARRAY<STRING> of clinical specialties. Example: ['cardiology','oncology'].",
-    "procedure":         "ARRAY<STRING> of procedures performed. Example: ['angioplasty','dialysis'].",
-    "equipment":         "ARRAY<STRING> of equipment available. Example: ['ECG','MRI','ventilator'].",
-    "capability":        "ARRAY<STRING> of declared capabilities. Example: ['ICU','24x7 emergency'].",
+    "recency_ts":        "Timestamp of last page update; null for ~95% of rows.",
+    "recency_months":    "Months since last page update. Used by R8 (stale-page rule, threshold 24 months).",
+    "specialties":       "ARRAY<STRING> of clinical specialties (camelCase tokens like 'cardiology', 'medicaloncology', 'orthopedicsurgery').",
+    "procedure":         "ARRAY<STRING> of procedures performed. Example: ['root canal treatment','dental implants'].",
+    "equipment":         "ARRAY<STRING> of equipment available. Example: ['ecg machine','ct scanner','dental chair'].",
+    "capability":        "ARRAY<STRING> of declared capabilities. Free-form phrases like 'open 24/7', 'multispeciality hospital', 'has 1 doctor on staff'.",
 }
 for c, txt in COMMENTS.items():
     safe = txt.replace("'", "''")
@@ -119,3 +169,4 @@ UNION ALL SELECT facility_id, 'capability', lower(trim(c)) FROM {SC}
 # COMMAND ----------
 display(spark.sql(f"SELECT facility_type, count(*) FROM {SC} GROUP BY facility_type ORDER BY 2 DESC"))
 display(spark.sql(f"SELECT claim_type, count(*) FROM {CL} GROUP BY claim_type"))
+display(spark.sql(f"SELECT count(*) AS unresolved_states FROM {SC} WHERE state IS NULL"))

@@ -18,18 +18,20 @@ Mosaic AI Vector Search · Genie · Unity Catalog · Databricks Apps.
 
 ## 1. Problem
 
-The VillageFinder dataset is a useful but messy snapshot of 10,031 Indian
+The VillageFinder dataset is a useful but messy snapshot of 10,000 Indian
 healthcare facilities. NGO and government planners need to answer questions
 like *"can District Hospital Kishanganj actually perform a cardiac procedure
-tonight?"* — but the data has six known systemic bugs:
+tonight?"* — but the data has six measured systemic bugs (counts confirmed
+against the materialised lakehouse, not the raw spec):
 
-| Bug | Frequency | Impact |
+| Bug | Frequency (measured) | Impact |
 |---|---|---|
-| `facilityTypeId = "farmacy"` (typo of pharmacy) | 166 of 184 "pharmacies" (~90%) | Any state-level pharmacy density analysis is off by 10× |
-| Fabricated awards in `description` (`W.HO award`, `ISO 9001:2025`) | dozens | Trust-grade analytics inflated |
-| Coordinates outside India / wrong state | ~23% | Concentrated in NITI Aspirational Districts — the populations who need accuracy most are the most mis-mapped |
-| `capacity` 99% null, `numberDoctors` 94% null, `yearEstablished` 92% null | systemic | Cannot infer hospital size from structured fields alone |
-| Claimed advanced specialty (cardiac, oncology) with empty `equipment` | thousands | "Ghost capability" — the headline truth-gap pattern |
+| `facilityTypeId = "farmacy"` (typo of pharmacy) | **166 of 184 "pharmacies" (~90%)** | Any state-level pharmacy density analysis is off by 10× |
+| Hospital with `capacity=null` AND `numberDoctors=null` AND `equipment=[]` ("ghost capability") | **2,294 hospitals (22.9%)** | The single largest truth-gap pattern in the corpus |
+| Listed advanced specialty without expected equipment evidence | **R7: 2,880 unique facilities (28.8%) · R1: 1,069 (10.7%)** | "Specialty-without-evidence" — drives most MED severity flags |
+| Coordinates land in **wrong state** (claimed-state ↔ lat/lon mismatch) | **51 facilities (0.51%)** | Small absolute count but every one is a routing risk for an NGO planning a field visit. **0 rows fall outside the India bounding box.** |
+| `capacity` 99% null, `numberDoctors` 94% null, `yearEstablished` 92% null, `recency_of_page_update` 95% null | systemic fill-rate gap | Cannot infer hospital size or page freshness from structured fields alone |
+| Fabricated awards in `description` (`W.HO`, `ISO 9001:2025+`, `Nobel`, `UNESCO`) | **0 in this snapshot** (rule armed for future ingest cycles) | Pramana's response is the honest one — *no fabricated awards detected* — and the agent demonstrates refusal-without-fabrication rather than inventing matches |
 | State distribution skewed | systemic | Per-million normalization required for honest comparison |
 
 A naive RAG bot will *repeat* these bugs. Pramana's job is to **catch them, cite
@@ -73,13 +75,13 @@ flowchart TD
   V -->|grounded| S[Synthesizer + Citation Grounder]
   S --> EP
 
-  subgraph Lakehouse[Unity Catalog · main.pramana]
+  subgraph Lakehouse[Unity Catalog · workspace.pramana]
     direction TB
     B[(bronze_facilities_raw<br/>10K rows · STRING PINs)] --> SC[(silver_facilities_clean<br/>typo-fixed · arrays parsed · geo-validated)]
     SC --> ST[(silver_facilities_text<br/>CDF enabled · embedding source)]
     SC --> CT[(silver_contradictions<br/>R1–R8 long form)]
     SC --> CL[(silver_claims_long<br/>per-claim explosion)]
-    ST & CT --> GD[(gold_facilities<br/>+ trust_score · flags · h3_6 · h3_8 · st_geom)]
+    ST & CT --> GD[(gold_facilities<br/>+ trust_score · flags · h3_6 · h3_8 · st_geom_wkt)]
     GD --> VS[(Vector Search index<br/>facilities_idx · gte-large-en)]
     GD --> GE[(Genie space<br/>pramana_facilities)]
   end
@@ -115,8 +117,10 @@ including R1-satisfied and R2-satisfied happy paths).
 
 ## 5. Data layers (Bronze → Silver → Gold)
 
-All in Unity Catalog `main.pramana`. Every column has a 1-sentence comment with
-example values — Genie quality is bottlenecked on column-comment quality.
+All in Unity Catalog `workspace.pramana` by default (Free Edition). Override
+with the `PRAMANA_CATALOG` / `PRAMANA_SCHEMA` env vars or the `catalog` / `schema`
+bundle variables in `databricks.yml`. Every column has a 1-sentence comment
+with example values — Genie quality is bottlenecked on column-comment quality.
 
 | Layer | Table | What it is |
 |---|---|---|
@@ -127,7 +131,7 @@ example values — Genie quality is bottlenecked on column-comment quality.
 | Silver | `silver_contradictions` | Long form of R1–R8 flags (one row per flag). |
 | Silver | `silver_trust` | Per-facility trust score and flags array. |
 | Silver | `ref_state_bbox` | Materialized lookup of `india_state_bbox.json`. |
-| Gold | `gold_facilities` | Silver ⊕ trust ⊕ flags ⊕ `h3_6` ⊕ `h3_8` ⊕ `st_geom`. Powers the map UI and the Genie space. |
+| Gold | `gold_facilities` | Silver ⊕ trust ⊕ flags ⊕ `h3_6` ⊕ `h3_8` ⊕ `st_geom_wkt` (WKT string; hydrate with `ST_GeomFromText`). Powers the map UI and the Genie space. |
 | Gold | `gold_eval_qa` | 25-row golden Q&A registered as MLflow eval dataset. |
 
 H3 IDs are stored as **hex strings** (`h3_h3tostring`) because Streamlit's
@@ -141,7 +145,7 @@ H3HexagonLayer requires strings, not the int64 form.
 |---|---|---|
 | `india_state_bbox.json` | Rule R3 + `silver_facilities_clean` validation | Detect coordinates falling in the wrong state. 35 states/UTs. |
 | `specialty_equipment.json` | Rule R7 | Map each specialty to expected equipment keywords (e.g. cardiology → ECG, echo, cath, angio). |
-| `aspirational_districts.json` | App audit metric + golden-set Q22 | The 112 NITI Aspirational Districts. Surfaces the bias finding that ~23% of bad coords concentrate in these districts. |
+| `aspirational_districts.json` | App audit metric + golden-set Q22 | The 112 NITI Aspirational Districts. Joined via `silver_facilities_clean.city ≈ AD-district-name` because the source has no `address_district` column — **61 of 112 AD names match a value in `address_city`, covering 339 facilities** in the corpus. Honest disclosure: this is a partial overlay, not a full district join. |
 | `census_state_pop.json` | Genie + golden-set Q7, Q10 | Census 2011 state populations used as denominator for "facilities per million" rankings. |
 
 ---
@@ -164,17 +168,22 @@ H3HexagonLayer requires strings, not the int64 form.
   as a LangChain tool, returning both the natural-language answer and the SQL
   Genie generated.
 
-### Tools (Unity Catalog Python functions)
+### Tools
 
-| UC name | Module | Purpose |
+All UC names below are written as `<catalog>.<schema>.<func>`; defaults are `workspace.pramana.*`.
+
+| Tool | Module | Purpose |
 |---|---|---|
-| `main.pramana.search_facilities` | `tools/search.py` | Hybrid vector + BM25 search over `silver_facilities_text` (also exposed to the agent via `VectorSearchRetrieverTool` for streaming traces). |
-| `main.pramana.parse_messy_field` | `tools/parse_messy.py` | `ai_extract` over a single free-form text field; returns JSON dict of extracted attributes. |
-| `main.pramana.score_claim_consistency` | `tools/consistency.py` | Runs all 8 rules for one facility; returns trust_score + flags. |
-| `main.pramana.geo_radius` | `tools/geo.py` | Facilities within `radius_km` of `(lat, lon)`, optionally specialty-filtered. Uses `h3_kring` for coarse pre-filter then `ST_DistanceSpheroid` for exact distance. |
-| `main.pramana.cross_source_disagree` | `tools/cross_source.py` | Checks whether a free-text claim is supported by ≥2 of 6 source columns. |
+| `workspace.pramana.parse_messy_field` | `tools/parse_messy.py` | `ai_extract` over a single free-form text field; returns JSON dict of extracted attributes. |
+| `workspace.pramana.score_claim_consistency` | `tools/consistency.py` | Runs all 8 rules for one facility; returns trust_score + flags. |
+| `workspace.pramana.geo_radius` | `tools/geo.py` | Facilities within `radius_km` of `(lat, lon)`, optionally specialty-filtered. Uses `h3_kring` for coarse pre-filter then `ST_DistanceSpheroid` for exact distance. |
+| `workspace.pramana.cross_source_disagree` | `tools/cross_source.py` | Checks whether a free-text claim is supported by ≥2 of 6 source columns. |
 
-All five are registered idempotently via `tools/registration.py` (notebook 08).
+These four UC functions are registered idempotently via `tools/registration.py`
+(notebook 08). `search_facilities` is exposed to the agent as a
+`VectorSearchRetrieverTool` over `workspace.pramana.facilities_idx`, not as a UC
+Python function. UC Python UDFs run in an isolated sandbox and do not inherit
+notebook `%pip` packages like `databricks-vectorsearch`.
 
 ---
 
@@ -227,10 +236,10 @@ pramana/
 │   ├── 02_silver_clean.py          typo fix · array parse · geo validate · column comments
 │   ├── 03_silver_text_repr.py      embedding-source text + CDF
 │   ├── 04_silver_contradictions.py R1–R8 batch UDF + trust score
-│   ├── 05_gold_facilities.py       join · h3_6 · h3_8 · st_geom · column comments
+│   ├── 05_gold_facilities.py       join · h3_6 · h3_8 · st_geom_wkt · column comments
 │   ├── 06_vector_index.py          create endpoint + delta-sync index (idempotent)
 │   ├── 07_genie_setup.md           manual Genie space setup (Free-Edition limit)
-│   ├── 08_register_uc_tools.py     register the 5 UC functions + smoke test
+│   ├── 08_register_uc_tools.py     register the 4 UC verifier functions + smoke test
 │   ├── 09_log_and_deploy_agent.py  log_model + register UC + agents.deploy
 │   └── 10_eval.py                  baseline vs intervention with 7 scorers
 ├── resources/
@@ -263,11 +272,11 @@ pramana/
 2. **"Which districts in Bihar have zero functional oncology coverage within 50 km?"**
    → Genie aggregation × `geo_radius` × Aspirational-Districts overlay. *Social Impact.*
 3. **"Show me every facility whose listed coordinates fall outside its claimed state."**
-   → R3 at scale; counts cross-tabulated with NITI Aspirational Districts. *IDP, Social Impact.*
+   → R3 at scale; **51 cross-state mismatches** confirmed in the lakehouse, cross-tabulated with NITI Aspirational Districts (note: 0 rows outside the India bounding box — every facility's lat/lon is *somewhere* in India, just not always its claimed state). *IDP, Social Impact.*
 4. **"How many entries have the `farmacy` typo and what's the impact on pharmacy supply analytics?"**
-   → R5 + per-state recompute showing the 10× undercount. *IDP.*
-5. **"Audit the dataset for fabricated certifications."**
-   → R6 + `ai_classify` validation. *Discovery/Verification.*
+   → R5 + per-state recompute showing the 10× undercount (166 / 184 = 90.2%). *IDP.*
+5. **"Audit the dataset for fabricated certifications like W.HO award or ISO 9001:2025+."**
+   → R6 fires **0 times** on this snapshot. The agent returns *"No fabricated awards detected in this snapshot of 10,000 facilities. Confidence: high."* — this demonstrates **honest refusal rather than fabrication**, which is the entire point of a Truth-Check Engine. The rule is armed for future ingest cycles. *Discovery/Verification.*
 
 Eval headline: `notebooks/10_eval.py` runs the same 25 questions through
 (a) bare Llama 3.3 70B with no tools and (b) the full Pramana agent, and
@@ -296,7 +305,7 @@ prints the per-metric delta table.
 ```bash
 # 0. one-time: drop the Excel into a UC volume
 databricks fs cp data/raw/VF_Hackathon_Dataset_India_Large.xlsx \
-    dbfs:/Volumes/main/pramana/raw/
+    dbfs:/Volumes/workspace/pramana/raw/
 
 # 1. validate + deploy bundle to prod
 databricks bundle validate -t prod
