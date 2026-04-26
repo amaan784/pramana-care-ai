@@ -89,8 +89,7 @@ def run_sql(sql: str) -> pd.DataFrame:
         res = w.statement_execution.execute_statement(
             warehouse_id=WAREHOUSE_ID,
             statement=sql,
-            wait_timeout="10s",
-            on_wait_timeout="CONTINUE",
+            wait_timeout="30s",
         )
         for _ in range(24):
             state = str(getattr(getattr(res, "status", None), "state", "") or "").upper()
