@@ -8,7 +8,7 @@ from pramana.config import CATALOG, SCHEMA
 
 def register_all() -> list[str]:
     from unitycatalog.ai.core.databricks import DatabricksFunctionClient
-    from pramana.tools.consistency import score_facility
+    from pramana.tools.consistency import score_claim_consistency
     from pramana.tools.parse_messy import parse_messy_field
     from pramana.tools.geo import geo_radius
     from pramana.tools.cross_source import cross_source_disagree
@@ -16,17 +16,26 @@ def register_all() -> list[str]:
 
     client = DatabricksFunctionClient()
 
-    fns = [
-        ("score_claim_consistency", score_facility),
-        ("parse_messy_field",       parse_messy_field),
-        ("geo_radius",              geo_radius),
-        ("cross_source_disagree",   cross_source_disagree),
-        ("search_facilities",       search_facilities),
-    ]
+    # `create_python_function` registers under the callable's ``__name__``, not an
+    # arbitrary alias. Always delete/create using ``py_fn.__name__`` so we don't
+    # orphan e.g. ``score_facility`` while the agent expects ``score_claim_consistency``.
+    for stale in ("score_facility",):
+        try:
+            client.delete_function(f"{CATALOG}.{SCHEMA}.{stale}")
+        except Exception:
+            pass
+
+    fns = (
+        score_claim_consistency,
+        parse_messy_field,
+        geo_radius,
+        cross_source_disagree,
+        search_facilities,
+    )
 
     created: list[str] = []
-    for uc_name, py_fn in fns:
-        full = f"{CATALOG}.{SCHEMA}.{uc_name}"
+    for py_fn in fns:
+        full = f"{CATALOG}.{SCHEMA}.{py_fn.__name__}"
         try:
             client.delete_function(full)
         except Exception:

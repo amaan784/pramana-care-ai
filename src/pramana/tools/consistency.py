@@ -3,7 +3,8 @@
 Used in two places:
   1. Batch — applied to every row in `notebooks/04_silver_contradictions.py`
      to materialise `silver.contradictions` (Spark UDF over the table).
-  2. Online — registered as UC function `score_claim_consistency(facility_id STRING)`
+  2. Online — registered as UC function `score_claim_consistency` (Python name must
+     match: `create_python_function` uses the callable's ``__name__``, not a separate alias).
      and called by the Verifier node mid-conversation.
 
 Keep this file pure-python (stdlib only). UC python functions cannot import
@@ -238,7 +239,7 @@ def trust_score(flags: list[dict]) -> int:
     return max(0, 100 - (35 * h + 15 * m + 5 * l))
 
 
-def score_facility(facility_id: str) -> str:
+def score_claim_consistency(facility_id: str) -> str:
     """Run all 8 consistency rules (R1-R8) for a single facility and return a
     JSON envelope with its trust score and any flags fired.
 
