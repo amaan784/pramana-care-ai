@@ -19,6 +19,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+import streamlit.components.v1 as components
 from databricks.sdk import WorkspaceClient
 from openai import OpenAI
 
@@ -454,6 +455,7 @@ CUSTOM_CSS = """
         transition: transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease;
         min-height: 260px;
         display: flex; flex-direction: column;
+        cursor: pointer;
     }
     .demo-card::after {
         content: ""; position: absolute;
@@ -1435,21 +1437,21 @@ with tab_home:
             <h2>Three demos. Three different kinds of truth.</h2>
             <p class="sec-tag">Click any tab above — the system is wired to the live gold tables.</p>
             <div class="demo-grid">
-                <div class="demo-card">
+                <div class="demo-card" data-tab-target="Medical Desert Map">
                     <div class="ic">""" + LOGO_LIGHT_BG + """</div>
                     <div class="num">Demo 01</div>
                     <h3>The Dialysis Desert</h3>
                     <p>Pick a specialty and watch entire districts light up red where coverage drops to zero. PramanaCare puts a 95% Wilson interval around the rate.</p>
                     <div class="stat-line">city-level coverage · 95% CI · sortable deficit score</div>
                 </div>
-                <div class="demo-card">
+                <div class="demo-card" data-tab-target="Patient Finder">
                     <div class="ic">""" + LOGO_LIGHT_BG + """</div>
                     <div class="num">Demo 02</div>
                     <h3>Trust Scorer in Action</h3>
                     <p>Find every facility that claims advanced procedures while listing zero equipment. The validator flags it; the trust score drops; the chat surfaces it as a citation.</p>
                     <div class="stat-line">""" + f"{n_flags_total:,}" + """ contradictions · validator self-correction loop</div>
                 </div>
-                <div class="demo-card">
+                <div class="demo-card" data-tab-target="Trust &amp; Audit">
                     <div class="ic">""" + LOGO_LIGHT_BG + """</div>
                     <div class="num">Demo 03</div>
                     <h3>Data-Quality Audit</h3>
@@ -1484,6 +1486,82 @@ with tab_home:
         </div>
         """,
         unsafe_allow_html=True,
+    )
+
+    # ──────────────────────────────────────────────────────────────────────
+    # Bridge: make in-page anchor links and demo cards actually work.
+    # Streamlit sandboxes anchors and ignores #fragment scrolls, and the tab
+    # widget can only be switched by clicking its own button. This component
+    # reaches into the parent document on every rerun, hooks anchor clicks to
+    # scrollIntoView the matching #id, and hooks demo-card clicks to find the
+    # tab button whose label matches data-tab-target and click it.
+    # ──────────────────────────────────────────────────────────────────────
+    components.html(
+        """
+        <script>
+        (function () {
+          const TRY_FOR_MS = 8000;
+          const POLL_MS    = 250;
+          const start      = Date.now();
+
+          function getDoc() {
+            try { return window.parent.document; } catch (e) { return null; }
+          }
+
+          function wire() {
+            const doc = getDoc();
+            if (!doc) return;
+
+            // 1. Anchor links: scroll target into view on click.
+            doc.querySelectorAll('a[href^="#"]').forEach(a => {
+              if (a.dataset.anchorWired === '1') return;
+              a.dataset.anchorWired = '1';
+              a.addEventListener('click', (ev) => {
+                const id = a.getAttribute('href').slice(1);
+                if (!id) return;
+                const target = doc.getElementById(id);
+                if (target) {
+                  ev.preventDefault();
+                  target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+              });
+            });
+
+            // 2. Demo cards: click the tab button whose label matches.
+            doc.querySelectorAll('.demo-card[data-tab-target]').forEach(card => {
+              if (card.dataset.cardWired === '1') return;
+              card.dataset.cardWired = '1';
+              card.addEventListener('click', () => {
+                const label = card.getAttribute('data-tab-target');
+                const buttons = doc.querySelectorAll('button[role="tab"]');
+                for (const btn of buttons) {
+                  if ((btn.innerText || '').trim() === label) {
+                    btn.click();
+                    return;
+                  }
+                }
+              });
+            });
+          }
+
+          function loop() {
+            wire();
+            if (Date.now() - start < TRY_FOR_MS) {
+              setTimeout(loop, POLL_MS);
+            }
+          }
+          loop();
+
+          // Also re-wire whenever Streamlit re-renders the DOM.
+          const doc = getDoc();
+          if (doc && window.MutationObserver) {
+            const obs = new MutationObserver(() => wire());
+            obs.observe(doc.body, { childList: true, subtree: true });
+          }
+        })();
+        </script>
+        """,
+        height=0,
     )
 
 # ──────────────────────────────────────────────────────────────────────────────
