@@ -168,19 +168,22 @@ H3HexagonLayer requires strings, not the int64 form.
   as a LangChain tool, returning both the natural-language answer and the SQL
   Genie generated.
 
-### Tools (Unity Catalog Python functions)
+### Tools
 
 All UC names below are written as `<catalog>.<schema>.<func>`; defaults are `workspace.pramana.*`.
 
-| UC name | Module | Purpose |
+| Tool | Module | Purpose |
 |---|---|---|
-| `workspace.pramana.search_facilities` | `tools/search.py` | Hybrid vector + BM25 search over `silver_facilities_text` (also exposed to the agent via `VectorSearchRetrieverTool` for streaming traces). |
 | `workspace.pramana.parse_messy_field` | `tools/parse_messy.py` | `ai_extract` over a single free-form text field; returns JSON dict of extracted attributes. |
 | `workspace.pramana.score_claim_consistency` | `tools/consistency.py` | Runs all 8 rules for one facility; returns trust_score + flags. |
 | `workspace.pramana.geo_radius` | `tools/geo.py` | Facilities within `radius_km` of `(lat, lon)`, optionally specialty-filtered. Uses `h3_kring` for coarse pre-filter then `ST_DistanceSpheroid` for exact distance. |
 | `workspace.pramana.cross_source_disagree` | `tools/cross_source.py` | Checks whether a free-text claim is supported by ≥2 of 6 source columns. |
 
-All five are registered idempotently via `tools/registration.py` (notebook 08).
+These four UC functions are registered idempotently via `tools/registration.py`
+(notebook 08). `search_facilities` is exposed to the agent as a
+`VectorSearchRetrieverTool` over `workspace.pramana.facilities_idx`, not as a UC
+Python function. UC Python UDFs run in an isolated sandbox and do not inherit
+notebook `%pip` packages like `databricks-vectorsearch`.
 
 ---
 
@@ -236,7 +239,7 @@ pramana/
 │   ├── 05_gold_facilities.py       join · h3_6 · h3_8 · st_geom_wkt · column comments
 │   ├── 06_vector_index.py          create endpoint + delta-sync index (idempotent)
 │   ├── 07_genie_setup.md           manual Genie space setup (Free-Edition limit)
-│   ├── 08_register_uc_tools.py     register the 5 UC functions + smoke test
+│   ├── 08_register_uc_tools.py     register the 4 UC verifier functions + smoke test
 │   ├── 09_log_and_deploy_agent.py  log_model + register UC + agents.deploy
 │   └── 10_eval.py                  baseline vs intervention with 7 scorers
 ├── resources/

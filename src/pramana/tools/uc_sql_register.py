@@ -6,8 +6,8 @@ the JVM gateway (``JAVA_GATEWAY_EXITED``).  SQL ``LANGUAGE SQL`` functions run o
 the warehouse/cluster SQL engine and may read Delta tables, ``ai_extract``, H3,
 etc.
 
-``search_facilities`` stays a Python UC function (Vector Search REST client only —
-see ``registration.py``).
+Facility search is handled by ``VectorSearchRetrieverTool`` in the deployed agent,
+not by a Unity Catalog function.
 """
 from __future__ import annotations
 

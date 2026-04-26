@@ -3,8 +3,12 @@
 - **Four** table-backed tools are **SQL** scalar functions (``LANGUAGE SQL``) — UC
   Python UDFs cannot call ``SparkSession`` / ``spark.sql`` (see
   ``uc_sql_register.py``).
-- **search_facilities** stays a **Python** UC function: it only calls the Vector
-  Search REST client (no Spark in the UDF body).
+- Facility search is **not** registered as a UC function. The deployed agent uses
+  ``databricks_langchain.VectorSearchRetrieverTool`` directly (see
+  ``agent/agent.py``), which runs in the model-serving environment where
+  ``databricks-vectorsearch`` is installed. UC Python UDF sandboxes do not inherit
+  notebook ``%pip`` packages, so a UC ``search_facilities`` Python function fails
+  at runtime with ``ModuleNotFoundError: databricks.vector_search``.
 
 Run from notebook ``08_register_uc_tools`` with the active ``spark`` session.
 """
@@ -14,24 +18,11 @@ from pramana.config import CATALOG, SCHEMA
 
 
 def register_all(spark) -> list[str]:
-    """Register all five UC tools. Pass the notebook/job ``spark`` session."""
+    """Register the four UC tools in ``pramana.config.UC_TOOLS``."""
     from pramana.tools.uc_sql_register import register_uc_sql_functions
-    from unitycatalog.ai.core.databricks import DatabricksFunctionClient
-    from pramana.tools.search import search_facilities
 
-    created: list[str] = list(register_uc_sql_functions(spark, CATALOG, SCHEMA))
+    # Clean up the previous UC-Python implementation. The agent uses
+    # VectorSearchRetrieverTool for this name, not a UC function.
+    spark.sql(f"DROP FUNCTION IF EXISTS {CATALOG}.{SCHEMA}.search_facilities")
 
-    client = DatabricksFunctionClient()
-    full = f"{CATALOG}.{SCHEMA}.{search_facilities.__name__}"
-    try:
-        client.delete_function(full)
-    except Exception:
-        pass
-    info = client.create_python_function(
-        func=search_facilities,
-        catalog=CATALOG,
-        schema=SCHEMA,
-        replace=True,
-    )
-    created.append(info.full_name if hasattr(info, "full_name") else full)
-    return created
+    return list(register_uc_sql_functions(spark, CATALOG, SCHEMA))

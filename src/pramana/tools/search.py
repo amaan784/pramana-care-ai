@@ -1,8 +1,10 @@
 """Hybrid vector search wrapper.
 
 The agent uses `databricks_langchain.VectorSearchRetrieverTool` directly
-(see agent/graph.py); this thin Python wrapper exists for the *batch*
-notebook code path and as a UC function for ad-hoc Genie/SQL use.
+(see agent/agent.py); this thin Python wrapper exists for local/notebook
+experiments only. It is **not** registered as a Unity Catalog Python function:
+UC Python UDF sandboxes do not inherit notebook `%pip` packages like
+`databricks-vectorsearch`.
 """
 from __future__ import annotations
 import json
@@ -11,10 +13,8 @@ import json
 def search_facilities(query: str, k: int) -> str:
     """Return top-k facilities matching free-text ``query`` as a JSON list.
 
-    Registered as UC function ``{CATALOG}.{SCHEMA}.search_facilities`` (default
-    ``workspace.pramana.search_facilities``). Performs a hybrid (vector + BM25)
-    search against the Delta-Sync index ``facilities_idx`` over
-    ``silver_facilities_text``.
+    Performs a hybrid (vector + BM25) search against the Delta-Sync index
+    ``facilities_idx`` over ``silver_facilities_text``.
 
     Args:
         query: Natural-language query describing the facility, capability or
