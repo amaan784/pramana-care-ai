@@ -2,7 +2,12 @@ mlflow[databricks]>=3.4.0
 databricks-agents>=1.6.0
 databricks-langchain>=0.5.0
 unitycatalog-langchain[databricks]>=0.3.0
-langgraph>=0.2.50
+# Pin the LangGraph family together. Unpinned installs can resolve an
+# incompatible pair where langgraph-prebuilt imports ExecutionInfo/ServerInfo
+# from langgraph.runtime but the installed langgraph package does not expose it.
+langgraph==1.1.3
+langgraph-prebuilt==1.0.8
+langgraph-checkpoint==3.0.1
 langchain-core>=0.3.0
 databricks-vectorsearch>=0.50
 databricks-sdk>=0.40.0

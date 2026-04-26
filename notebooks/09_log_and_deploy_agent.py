@@ -49,13 +49,17 @@ input_example = {
 }
 
 with mlflow.start_run(run_name="pramana-agent"):
+    # Avoid MLflow's log-time input-example validation path. On Databricks this
+    # can trip a tracing/contextmanager bug ("generator didn't stop after
+    # throw()") before deployment. We validate the live endpoint after
+    # agents.deploy() instead.
+    os.environ["PRAMANA_DISABLE_LANGCHAIN_AUTOLOG"] = "1"
     info = mlflow.pyfunc.log_model(
         name="agent",
         python_model="../src/pramana/agent/agent.py",
         code_paths=["../src/pramana"],
         pip_requirements="../requirements.txt",
         resources=resources,
-        input_example=input_example,
     )
     print("logged:", info.model_uri)
 
@@ -73,7 +77,20 @@ dep = agents.deploy(
     endpoint_name=SERVING_ENDPOINT_NAME,
     scale_to_zero=True,
     tags={"project": "pramana", "stage": "demo"},
-    environment_vars={"GENIE_SPACE_ID": os.environ.get("GENIE_SPACE_ID", "")},
+    environment_vars={
+        "GENIE_SPACE_ID": os.environ.get("GENIE_SPACE_ID", ""),
+        "WAREHOUSE_ID": os.environ.get("WAREHOUSE_ID", ""),
+        "PRAMANA_CATALOG": os.environ.get("PRAMANA_CATALOG", "workspace"),
+        "PRAMANA_SCHEMA": os.environ.get("PRAMANA_SCHEMA", "pramana"),
+        "PRAMANA_INDEX": os.environ.get(
+            "PRAMANA_INDEX",
+            "workspace.pramana.facilities_idx",
+        ),
+        "SERVING_ENDPOINT_NAME": os.environ.get(
+            "SERVING_ENDPOINT_NAME",
+            "pramana-agent",
+        ),
+    },
 )
 print("Endpoint:", dep.endpoint_name)
 print("Review App:", dep.review_app_url)
