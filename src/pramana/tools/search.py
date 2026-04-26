@@ -11,14 +11,19 @@ import json
 def search_facilities(query: str, k: int = 8) -> str:
     """Return top-k facilities matching free-text `query` as JSON list.
 
-    Registered as UC function `main.pramana.search_facilities`.
+    Local/notebook-only helper. The deployed agent uses
+    `VectorSearchRetrieverTool` directly.
     """
+    import os
     from databricks.vector_search.client import VectorSearchClient
     client = VectorSearchClient(disable_notice=True)
-    idx = client.get_index(index_name="main.pramana.facilities_idx")
+    cat = os.environ.get("PRAMANA_CATALOG", "workspace")
+    sch = os.environ.get("PRAMANA_SCHEMA", "pramana")
+    index = os.environ.get("PRAMANA_INDEX", f"{cat}.{sch}.facilities_idx")
+    idx = client.get_index(index_name=index)
     res = idx.similarity_search(
         query_text=query,
-        columns=["facility_id", "name", "district", "state", "facility_type", "description"],
+        columns=["facility_id", "name", "city", "state", "facility_type", "description"],
         num_results=int(k),
         query_type="HYBRID",
     )
