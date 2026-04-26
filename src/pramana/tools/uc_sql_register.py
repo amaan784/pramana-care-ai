@@ -122,17 +122,7 @@ RETURN (
       )
     ) AS j
     FROM (
-      SELECT
-        v.facility_id,
-        v.name,
-        v.facility_type,
-        v.state,
-        v.city,
-        v.latitude,
-        v.longitude,
-        v.trust_score,
-        v.specialties,
-        v.distance_km
+      SELECT *
       FROM (
         SELECT
           facility_id,
@@ -154,7 +144,7 @@ RETURN (
           FROM (
             SELECT explode(
               h3_kring(
-                (SELECT h3_longlatash3(p_lon, p_lat, 8)),
+                h3_longlatash3(p_lon, p_lat, 8),
                 greatest(1, cast(ceil(p_radius_km / 0.461) AS INT))
               )
             ) AS h3idx
@@ -167,9 +157,9 @@ RETURN (
             x -> contains(lower(x), lower(trim(p_specialty)))
           )
         )
-      ) v
-      WHERE v.distance_km <= p_radius_km
-      ORDER BY v.distance_km ASC
+      ) raw
+      WHERE raw.distance_km <= p_radius_km
+      ORDER BY raw.distance_km ASC
       LIMIT p_limit
     ) t
   ) w
