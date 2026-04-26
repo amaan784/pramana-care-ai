@@ -1,5 +1,7 @@
 # Pramana — Agentic Facility Truth-Check Engine for Indian Healthcare
 
+**Demo videos:** [Google Drive folder](https://drive.google.com/drive/u/0/folders/1HHUpH6HfC3YMdtWlkQRkO7Qw6280Mfi1)
+
 > *Pramana* (Sanskrit: प्रमाण) — "valid means of knowledge."
 
 **One line.** Pramana ingests the 10K-row VillageFinder Indian healthcare facility
