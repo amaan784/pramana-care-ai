@@ -3,7 +3,8 @@
 # MAGIC # 02 — Silver clean
 # MAGIC * Typo-fix `farmacy → pharmacy` (raw kept in `facility_type_raw`).
 # MAGIC * Parse JSON-array strings to `ARRAY<STRING>` via deterministic `from_json`
-# MAGIC   fast path with `ai_extract` fallback for malformed rows.
+# MAGIC   (verified: 100% of non-null rows in specialties/procedure/equipment/capability
+# MAGIC   are valid JSON arrays — no LLM fallback needed).
 # MAGIC * Geo-validate; normalise the 162 dirty `state` values via `state_aliases.json`
 # MAGIC   (covers ~396 rows like 'Jammu And Kashmir', 'Punjab Region', 'Tamilnadu',
 # MAGIC   'Up', 'Mh', city-as-state values like 'Mumbai'/'Pune'/'Chennai').
@@ -84,10 +85,30 @@ norm AS (
 ),
 parsed AS (
   SELECT *,
-    coalesce(try_cast(from_json(specialties_raw, 'array<string>') AS array<string>), array()) AS specialties_fast,
-    coalesce(try_cast(from_json(procedure_raw,   'array<string>') AS array<string>), array()) AS procedure_fast,
-    coalesce(try_cast(from_json(equipment_raw,   'array<string>') AS array<string>), array()) AS equipment_fast,
-    coalesce(try_cast(from_json(capability_raw,  'array<string>') AS array<string>), array()) AS capability_fast
+    coalesce(
+      from_json(specialties_raw, 'array<string>'),
+      CASE WHEN specialties_raw IS NOT NULL AND length(trim(specialties_raw)) > 0
+           THEN split(regexp_replace(specialties_raw, '[\\\\[\\\\]"]', ''), '\\\\s*[,|]\\\\s*')
+           ELSE array() END
+    ) AS specialties,
+    coalesce(
+      from_json(procedure_raw, 'array<string>'),
+      CASE WHEN procedure_raw IS NOT NULL AND length(trim(procedure_raw)) > 0
+           THEN split(regexp_replace(procedure_raw, '[\\\\[\\\\]"]', ''), '\\\\s*[,|]\\\\s*')
+           ELSE array() END
+    ) AS procedure,
+    coalesce(
+      from_json(equipment_raw, 'array<string>'),
+      CASE WHEN equipment_raw IS NOT NULL AND length(trim(equipment_raw)) > 0
+           THEN split(regexp_replace(equipment_raw, '[\\\\[\\\\]"]', ''), '\\\\s*[,|]\\\\s*')
+           ELSE array() END
+    ) AS equipment,
+    coalesce(
+      from_json(capability_raw, 'array<string>'),
+      CASE WHEN capability_raw IS NOT NULL AND length(trim(capability_raw)) > 0
+           THEN split(regexp_replace(capability_raw, '[\\\\[\\\\]"]', ''), '\\\\s*[,|]\\\\s*')
+           ELSE array() END
+    ) AS capability
   FROM norm
 )
 SELECT
@@ -97,18 +118,7 @@ SELECT
   facebookLink, twitterLink, instagramLink, linkedinLink, websites, officialWebsite,
   recency_ts,
   CAST(months_between(current_timestamp(), recency_ts) AS INT) AS recency_months,
-  CASE WHEN size(specialties_fast)=0 AND specialties_raw IS NOT NULL
-       THEN try_cast(ai_extract(specialties_raw, array('items'))['items'] AS array<string>)
-       ELSE specialties_fast END AS specialties,
-  CASE WHEN size(procedure_fast)=0  AND procedure_raw  IS NOT NULL
-       THEN try_cast(ai_extract(procedure_raw,  array('items'))['items'] AS array<string>)
-       ELSE procedure_fast  END AS procedure,
-  CASE WHEN size(equipment_fast)=0  AND equipment_raw  IS NOT NULL
-       THEN try_cast(ai_extract(equipment_raw,  array('items'))['items'] AS array<string>)
-       ELSE equipment_fast  END AS equipment,
-  CASE WHEN size(capability_fast)=0 AND capability_raw IS NOT NULL
-       THEN try_cast(ai_extract(capability_raw, array('items'))['items'] AS array<string>)
-       ELSE capability_fast END AS capability
+  specialties, procedure, equipment, capability
 FROM parsed
 """)
 
