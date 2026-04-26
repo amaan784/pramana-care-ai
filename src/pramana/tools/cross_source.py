@@ -31,7 +31,7 @@ def cross_source_disagree(facility_id: str, claim: str) -> str:
         ``sources_total`` (always 6).
     """
     import json
-    import os
+    from pramana.config import CATALOG, SCHEMA
     from pyspark.sql import SparkSession
 
     cat = os.environ.get("PRAMANA_CATALOG", "workspace")
@@ -39,9 +39,9 @@ def cross_source_disagree(facility_id: str, claim: str) -> str:
 
     spark = SparkSession.builder.getOrCreate()
     rows = spark.sql(
-        f"SELECT specialties, capability, equipment, procedure, description, "
-        f"capacity, number_doctors FROM {cat}.{sch}.silver_facilities_clean "
-        f"WHERE facility_id = :fid LIMIT 1",
+        "SELECT specialties, capability, equipment, procedure, description, "
+        f"capacity, number_doctors FROM {CATALOG}.{SCHEMA}.silver_facilities_clean "
+        "WHERE facility_id = :fid LIMIT 1",
         args={"fid": facility_id},
     ).collect()
     if not rows:

@@ -23,7 +23,16 @@ def genie_query(question: str) -> str:
         return f"databricks-sdk not available: {e}"
 
     w = WorkspaceClient()
-    res = w.genie.start_conversation_and_wait(space_id=space_id, content=question)
+    try:
+        res = w.genie.start_conversation_and_wait(space_id=space_id, content=question)
+    except Exception as e:
+        # Genie can fail a message when it generates invalid SQL (for example,
+        # stale space instructions referring to `main.pramana` or `district`).
+        # Return a tool result instead of crashing the whole serving endpoint.
+        return (
+            "Genie query failed before completion. Treat this as low-confidence "
+            f"and do not fabricate an aggregate answer. Error: {type(e).__name__}: {e}"
+        )
     text_parts: list[str] = []
     sql_text: Optional[str] = None
 

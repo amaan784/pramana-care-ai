@@ -1,7 +1,6 @@
 """Parse a single messy free-form facility text field with `ai_extract`.
 
-UC function name: `{CATALOG}.{SCHEMA}.parse_messy_field(text STRING) -> STRING (JSON)`,
-where CATALOG/SCHEMA come from `pramana.config` (default: `workspace.pramana`).
+UC function name: `workspace.pramana.parse_messy_field(text STRING) -> STRING (JSON)` by default.
 """
 from __future__ import annotations
 

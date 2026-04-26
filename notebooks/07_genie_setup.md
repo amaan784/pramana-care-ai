@@ -8,19 +8,15 @@ service-principal gymnastics, so we drive this once by hand.
 1. **Workspace → Genie → New space**.
 2. **Name:** `pramana_facilities`.
 3. **Add tables:** `workspace.pramana.gold_facilities`, `workspace.pramana.silver_contradictions`, `workspace.pramana.silver_claims_long`.
-   (Replace `workspace` with whatever catalog you set via `databricks.yml` / `PRAMANA_CATALOG`.)
 4. **Warehouse:** the 2X-Small serverless SQL warehouse used by the bundle.
 5. **Instructions** (paste verbatim):
 
-> You answer questions about Indian healthcare facilities. PIN codes are STRINGS with leading zeros — never cast to INT. Always prefer `gold_facilities`. `trust_score` is 0–100 with lower = more contradictions. `flags` is an array of struct{rule_id, severity, message, evidence, citation_column}. `h3_6` and `h3_8` are STRING H3 cell ids. The `facility_type` column normalises the bug `farmacy → pharmacy`; original is in `facility_type_raw`. The `state` column is the canonical state name resolved via `ref_state_aliases`; the verbatim source is in `state_raw`. The dataset has no district column, so use `city` (sourced from `address_city`) — for most rows city ≈ district HQ. Specialty values are camelCase concatenated tokens (e.g. `'medicaloncology'`, `'orthopedicsurgery'`); always match with `contains(lower(x), 'oncolog')` style substrings, not equality. Every lat/lon falls inside the India bounding box; the only coordinate bug in this snapshot is **cross-state mismatch** (51 rows / 0.51%), where the lat/lon points to a state that is not the one in `address_stateOrRegion` — flagged by R3 in `silver_contradictions`.
+> You answer questions about Indian healthcare facilities. PIN codes are STRINGS with leading zeros — never cast to INT. Always prefer `gold_facilities`. `trust_score` is 0–100 with lower = more contradictions. `flags` is an array of struct{rule_id, severity, message, evidence, citation_column}. `h3_6` and `h3_8` are STRING H3 cell ids. The `facility_type` column normalises the bug `farmacy → pharmacy`; original is in `facility_type_raw`. The `state` column is the canonical state name; the verbatim source is in `state_raw` if available. The dataset has no reliable district column, so use `city` (sourced from `address_city`) as a city / district-HQ proxy. Specialty values are camelCase concatenated tokens; always match with `contains(lower(x), 'oncolog')` style substrings, not equality. Every lat/lon falls inside the India bounding box; the coordinate bug in this snapshot is cross-state mismatch (51 rows / 0.51%), flagged by R3 in `silver_contradictions`.
 
 ## 5 Example SQL queries (paste as Genie examples)
 
 ```sql
 -- Q1: How many facilities per state, ranked.
--- Filter out the ~19 rows (0.19%) where state-alias resolution couldn't pick a
--- canonical state — they would otherwise appear as a literal "null" bucket in
--- the ranking. This matches Genie's own defensive default for state aggregations.
 SELECT state, COUNT(*) AS n FROM workspace.pramana.gold_facilities
 WHERE state IS NOT NULL
 GROUP BY state ORDER BY n DESC;
@@ -29,7 +25,7 @@ GROUP BY state ORDER BY n DESC;
 SELECT facility_type_raw, COUNT(*) AS n FROM workspace.pramana.gold_facilities
 WHERE facility_type_raw = 'farmacy' GROUP BY 1;
 
--- Q3: Cities with zero oncology coverage in a state (city ≈ district HQ).
+-- Q3: Cities with zero oncology coverage in Bihar (city ≈ district HQ).
 WITH onc AS (
   SELECT DISTINCT city FROM workspace.pramana.gold_facilities
   WHERE exists(specialties, x -> contains(lower(x), 'oncolog'))

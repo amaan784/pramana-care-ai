@@ -2,8 +2,7 @@
 # MAGIC %md
 # MAGIC # 01 — Bronze ingest
 # MAGIC Read VF_Hackathon_Dataset_India_Large.xlsx from a Unity Catalog volume and write
-# MAGIC `{CATALOG}.{SCHEMA}.bronze_facilities_raw` (default `workspace.pramana`).
-# MAGIC PIN codes preserved as STRING (leading zeros).
+# MAGIC `workspace.pramana.bronze_facilities_raw` by default. PIN codes preserved as STRING (leading zeros).
 
 # COMMAND ----------
 # MAGIC %pip install -q openpyxl==3.1.5 pandas

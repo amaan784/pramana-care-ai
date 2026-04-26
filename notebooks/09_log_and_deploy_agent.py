@@ -71,9 +71,22 @@ print("registered version:", reg.version)
 
 # COMMAND ----------
 from databricks import agents
+from mlflow import MlflowClient
+
+# Defensively resolve the latest existing registered version. If notebook cells
+# are rerun out of order (or older versions are deleted in the UI), a stale
+# `reg.version` can point at a deleted model version and make deploy fail.
+client = MlflowClient(registry_uri="databricks-uc")
+versions = client.search_model_versions(f"name = '{REGISTERED_MODEL}'")
+if not versions:
+    raise RuntimeError(f"No registered versions found for {REGISTERED_MODEL}")
+
+latest_version = max(versions, key=lambda v: int(v.version)).version
+print("deploying registered model version:", latest_version)
+
 dep = agents.deploy(
     model_name=REGISTERED_MODEL,
-    model_version=reg.version,
+    model_version=latest_version,
     endpoint_name=SERVING_ENDPOINT_NAME,
     scale_to_zero=True,
     tags={"project": "pramana", "stage": "demo"},

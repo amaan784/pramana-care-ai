@@ -68,7 +68,7 @@ LEFT JOIN agg   a USING (facility_id)
 COMMENTS = {
     "trust_score": "0-100 derived score: 100 - 35*HIGH - 15*MED - 5*LOW. Lower = more contradictions.",
     "flags":       "Array of struct{rule_id, severity, message, evidence, citation_column}.",
-    "h3_6":        "H3 hex id (string) at resolution 6. Use for state/district-level density maps.",
+    "h3_6":        "H3 hex id (string) at resolution 6. Use for state/city-level density maps.",
     "h3_8":        "H3 hex id (string) at resolution 8. Use for radius search and street-level maps.",
     "st_geom_wkt": "WKT (well-known-text) representation of ST_Point(longitude, latitude). Hydrate with ST_GeomFromText() when geometry is needed; the doubles latitude/longitude are usually enough.",
 }

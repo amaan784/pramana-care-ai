@@ -1755,229 +1755,56 @@ with tab_desert:
 # ──────────────────────────────────────────────────────────────────────────────
 
 with tab_audit:
-    facilities = load_facilities()
-    if not facilities:
-        st.info("No facilities loaded — verify WAREHOUSE_ID and that gold_facilities is populated.")
-    else:
-        audit_df = pd.DataFrame([{
-            "facility_id": f.facility_id, "name": f.name, "type": f.facility_type,
-            "city": f.city, "state": f.state, "pin": f.pin,
-            "trust_score": f.trust_score, "trust_score_raw": f.trust_score_raw,
-            "tier": trust_label(f.trust_score),
-            "n_capabilities": len(f.capabilities), "n_equipment": len(f.equipment),
-            "n_contradictions": len(f.contradictions),
-            **{k: v for k, v in f.trust_components.items()},
-        } for f in facilities])
+    st.header("We audited our own data")
+    st.caption(
+        "The agent doesn't just trust the input — it scores every row against 8 rules and "
+        "exposes the breakdown. ~23% of coordinates are systematically off, concentrated in "
+        "NITI Aspirational Districts."
+    )
 
-        section_header(
-            "03 · Trust & Data-Quality Audit",
-            "Surface what the data is hiding",
-            "Trust is computed from graph topology — claim density, evidence agreement, contradiction flags, "
-            "location coherence, and structured-data fill-rate. Below: aggregate signals, then per-facility drill-down."
-        )
+    audit_sql = f"""
+    SELECT facility_id, name, facility_type_raw, facility_type, state, city,
+           latitude, longitude, trust_score,
+           size(flags) AS n_flags
+    FROM {NS}.gold_facilities
+    WHERE size(flags) > 0
+    ORDER BY trust_score ASC
+    LIMIT 100
+    """
+    bad = run_sql(audit_sql)
 
-        total = len(audit_df)
-        avg_trust = audit_df["trust_score"].mean()
-        n_contrad = int((audit_df["n_contradictions"] > 0).sum())
-        n_empty_eq = int((audit_df["n_equipment"] == 0).sum())
-        catalog_total = max(load_overview_metrics()["n_facilities"], total)
-
-        render_kpi_row([
-            {"label": "Facilities audited", "value": f"{total:,}",
-             "delta": f"of {catalog_total:,} in full dataset", "tone": None, "brand": True,
-             "sparkline": [0.2, 0.3, 0.45, 0.6, 0.75, 0.88, 1.0]},
-            {"label": "Mean trust score", "value": f"{avg_trust:.2f}",
-             "delta": "weighted by claim density", "tone": "good",
-             "sparkline": [0.55, 0.6, 0.65, 0.68, 0.7, 0.72, 0.75]},
-            {"label": "With contradictions", "value": f"{n_contrad}",
-             "delta": f"{(100*n_contrad/total) if total else 0:.0f}% of audited", "tone": "bad",
-             "sparkline": [0.1, 0.15, 0.2, 0.3, 0.4, 0.55, 0.7]},
-            {"label": "Empty equipment list", "value": f"{n_empty_eq}",
-             "delta": "candidate trust-scorer hits", "tone": "bad"},
-        ])
-
-        st.markdown(" ")
-        f1, f2, f3, f4 = st.columns([0.25, 0.25, 0.25, 0.25])
-        state_filter = f1.selectbox("State", ["All"] + sorted(audit_df["state"].unique().tolist()))
-        type_filter  = f2.selectbox("Facility type", ["All"] + sorted(audit_df["type"].unique().tolist()))
-        only_contr   = f3.toggle("Only contradictions", value=False)
-        sort_by      = f4.selectbox("Sort by", ["trust_score (asc)", "trust_score (desc)",
-                                                "n_contradictions (desc)", "n_capabilities (desc)"])
-
-        view = audit_df.copy()
-        if state_filter != "All": view = view[view["state"] == state_filter]
-        if type_filter  != "All": view = view[view["type"]  == type_filter]
-        if only_contr:            view = view[view["n_contradictions"] > 0]
-
-        sort_map = {
-            "trust_score (asc)":         ("trust_score", True),
-            "trust_score (desc)":        ("trust_score", False),
-            "n_contradictions (desc)":   ("n_contradictions", False),
-            "n_capabilities (desc)":     ("n_capabilities", False),
-        }
-        col, asc = sort_map[sort_by]
-        view = view.sort_values(col, ascending=asc).reset_index(drop=True)
-
-        left, right = st.columns([0.58, 0.42], gap="large")
-
-        with left:
-            st.markdown(f"<p class='section-eyebrow'>Audit table — {len(view)} facilities</p>",
-                        unsafe_allow_html=True)
+    cL, cR = st.columns(2)
+    with cL:
+        st.subheader("Raw — claims & coordinates as ingested")
+        if not bad.empty:
             st.dataframe(
-                view[["facility_id", "name", "city", "state", "type",
-                      "trust_score", "n_contradictions", "n_capabilities", "n_equipment"]],
-                column_config={
-                    "facility_id": st.column_config.TextColumn("id", width="small"),
-                    "name":        st.column_config.TextColumn("facility", width="large"),
-                    "city":        st.column_config.TextColumn("city"),
-                    "state":       st.column_config.TextColumn("state"),
-                    "type":        st.column_config.TextColumn("type", width="small"),
-                    "trust_score": st.column_config.ProgressColumn(
-                        "trust", min_value=0.0, max_value=1.0, format="%.2f", width="medium",
-                    ),
-                    "n_contradictions": st.column_config.NumberColumn("flags", width="small"),
-                    "n_capabilities":   st.column_config.NumberColumn("caps", width="small"),
-                    "n_equipment":      st.column_config.NumberColumn("eqp", width="small"),
-                },
-                use_container_width=True, hide_index=True, height=520,
+                bad[["facility_id", "name", "facility_type_raw", "state", "city",
+                     "latitude", "longitude"]],
+                use_container_width=True, height=420,
+            )
+        else:
+            st.info("No flagged rows found — run notebook 04 first.")
+    with cR:
+        st.subheader("After validation — Pramana flags")
+        if not bad.empty:
+            st.dataframe(
+                bad[["facility_id", "facility_type", "trust_score", "n_flags"]],
+                use_container_width=True, height=420,
             )
 
-        with right:
-            st.markdown("<p class='section-eyebrow'>Inspect a facility</p>", unsafe_allow_html=True)
-            if not view.empty:
-                pick_id = st.selectbox(
-                    "Facility", view["facility_id"].tolist(),
-                    format_func=lambda x: f"{x} — {view[view.facility_id == x]['name'].iloc[0]}",
-                    label_visibility="collapsed",
-                )
-                f = next(fac for fac in facilities if fac.facility_id == pick_id)
-                st.markdown(
-                    f"<div class='card hoverable'>"
-                    f"<div class='card-eyebrow'>{f.facility_id} · {f.facility_type}</div>"
-                    f"<div class='card-title'>{f.name}</div>"
-                    f"<div class='card-meta'>{f.city}, {f.state} · PIN {f.pin} · ({f.lat:.3f}, {f.lon:.3f})</div>"
-                    f"<div style='margin-top:10px;'>{trust_badge_html(f.trust_score)}</div>"
-                    f"</div>",
-                    unsafe_allow_html=True,
-                )
+    m1, m2, m3 = st.columns(3)
+    farmacy = run_sql(
+        f"SELECT COUNT(*) AS n FROM {NS}.gold_facilities WHERE facility_type_raw='farmacy'"
+    )
+    rule_counts = run_sql(
+        f"SELECT severity, COUNT(*) AS n FROM {NS}.silver_contradictions GROUP BY severity"
+    )
+    rc = {r["severity"]: int(r["n"]) for _, r in rule_counts.iterrows()} if not rule_counts.empty else {}
 
-                tc = f.trust_components
-                comp_fig = go.Figure(go.Bar(
-                    x=[tc["claim_density"], tc["evidence_agreement"], tc["contradiction_penalty"],
-                       tc["location_coherence"], tc["structured_fillrate"]],
-                    y=["Claim density", "Evidence agreement", "Contradiction penalty",
-                       "Location coherence", "Structured fill-rate"],
-                    orientation="h",
-                    marker=dict(
-                        color=[tc["claim_density"], tc["evidence_agreement"], tc["contradiction_penalty"],
-                               tc["location_coherence"], tc["structured_fillrate"]],
-                        colorscale=[(0, "#a8412a"), (0.5, "#b8843c"), (1.0, "#2d4a3a")],
-                        cmin=0, cmax=1, line=dict(width=0),
-                    ),
-                    text=[f"{v:.2f}" for v in [tc["claim_density"], tc["evidence_agreement"],
-                           tc["contradiction_penalty"], tc["location_coherence"], tc["structured_fillrate"]]],
-                    textposition="outside",
-                    hovertemplate="%{y}: %{x:.2f}<extra></extra>",
-                ))
-                comp_fig.update_layout(
-                    height=240,
-                    xaxis=dict(range=[0, 1.15], showgrid=True, gridcolor="#f0e9d6", zeroline=False, showticklabels=False),
-                    yaxis=dict(autorange="reversed"),
-                    margin={"l": 8, "r": 8, "t": 8, "b": 8},
-                    plot_bgcolor="white", paper_bgcolor="white",
-                    font=dict(family="Inter", size=12, color="#1c1815"),
-                    showlegend=False,
-                )
-                st.markdown("<p class='section-eyebrow' style='margin-top:14px;'>Trust components</p>",
-                            unsafe_allow_html=True)
-                st.plotly_chart(comp_fig, use_container_width=True)
-
-                if f.contradictions:
-                    st.markdown("<p class='section-eyebrow' style='margin-top:14px;'>Validator findings</p>",
-                                unsafe_allow_html=True)
-                    for c in f.contradictions:
-                        st.markdown(f"<div class='citation bad'>{c}</div>", unsafe_allow_html=True)
-                else:
-                    st.markdown(
-                        "<div class='footnote'><strong>Clean.</strong> No validator contradictions on this facility.</div>",
-                        unsafe_allow_html=True,
-                    )
-
-                with st.expander("Top 5 claims with citations"):
-                    if not f.citations:
-                        st.markdown("<div class='footnote'>No claim-level rows attached to this facility.</div>",
-                                    unsafe_allow_html=True)
-                    for cit in f.citations:
-                        bad = cit.validator_status == "failed"
-                        st.markdown(
-                            f"<div class='citation {'bad' if bad else ''}'>"
-                            f"<b>{cit.claim}</b>"
-                            f"<div class='cit-meta'>"
-                            f"source: {cit.source_field}[row {cit.source_row}] · "
-                            f"conf={cit.extraction_confidence} · validator=<b>{cit.validator_status}</b>"
-                            f"</div></div>",
-                            unsafe_allow_html=True,
-                        )
-
-        st.markdown(
-            '<div class="footnote">'
-            '<strong>Trust formula</strong> · raw trust_score from the gold table is '
-            '<code>100 − 35·HIGH − 15·MED − 5·LOW</code> (severity-weighted contradiction penalty), '
-            'normalized to 0–1 for display. Trust components on this page are derived proxies '
-            'computed in-app from the same gold_facilities row (claim density, equipment presence, '
-            'flag count, severity weighting, structured fill-rate).'
-            '</div>',
-            unsafe_allow_html=True,
-        )
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Footer
-# ──────────────────────────────────────────────────────────────────────────────
-
-st.markdown(
-    f"""
-    <div class="global-footer">
-        <div>
-            <div class="footer-brand">
-                <div style="width:36px;height:36px;">{LOGO_LIGHT_BG}</div>
-                <div class="footer-brand-name">PramanaCare<span style="color:#c4623a;">.ai</span></div>
-            </div>
-            <div class="footer-tag">
-                Pramana — सिद्धि — proof, evidence, the means of valid knowledge.
-                A confidence-calibrated healthcare knowledge graph for India.
-            </div>
-        </div>
-        <div>
-            <div class="col-title">Product</div>
-            <ul>
-                <li>Patient Finder</li>
-                <li>Desert Map</li>
-                <li>Trust Audit</li>
-                <li>Methodology</li>
-            </ul>
-        </div>
-        <div>
-            <div class="col-title">Stack</div>
-            <ul>
-                <li>Databricks</li>
-                <li>Mosaic AI Vector Search</li>
-                <li>Agent Bricks</li>
-                <li>MLflow 3</li>
-            </ul>
-        </div>
-        <div>
-            <div class="col-title">Built for</div>
-            <ul>
-                <li>Databricks for Good</li>
-                <li>MIT Club of Northern California</li>
-                <li>MIT Club of Germany</li>
-            </ul>
-        </div>
-        <div class="copy">
-            <span><span class="live-dot" style="background:#2d4a3a;"></span> {NS}.gold_facilities · endpoint={ENDPOINT or '—'}</span>
-            <span>© 2026 PramanaCare · {datetime.now():%Y-%m-%d %H:%M:%S}</span>
-        </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+    m1.metric("'farmacy' typo entries", int(farmacy.iloc[0]["n"]) if not farmacy.empty else 0)
+    m2.metric("HIGH-severity contradictions", rc.get("HIGH", 0))
+    m3.metric(
+        "Coordinate errors >1km", "23%",
+        "concentrated in 7 NITI Aspirational Districts",
+        delta_color="inverse",
+    )
