@@ -232,7 +232,7 @@ pramana/
 │   ├── 05_gold_facilities.py       join · h3_6 · h3_8 · st_geom · column comments
 │   ├── 06_vector_index.py          create endpoint + delta-sync index (idempotent)
 │   ├── 07_genie_setup.md           manual Genie space setup (Free-Edition limit)
-│   ├── 08_register_uc_tools.py     register the 5 UC functions + smoke test
+│   ├── 08_register_uc_tools.py     register the 4 UC verifier functions + smoke test
 │   ├── 09_log_and_deploy_agent.py  log_model + register UC + agents.deploy
 │   └── 10_eval.py                  baseline vs intervention with 7 scorers
 ├── resources/
@@ -298,7 +298,7 @@ prints the per-metric delta table.
 ```bash
 # 0. one-time: drop the Excel into a UC volume
 databricks fs cp data/raw/VF_Hackathon_Dataset_India_Large.xlsx \
-    dbfs:/Volumes/main/pramana/raw/
+    dbfs:/Volumes/workspace/pramana/raw/
 
 # 1. validate + deploy bundle to prod
 databricks bundle validate -t prod
@@ -315,6 +315,27 @@ databricks bundle run pramana_deploy_agent  -t prod   # 09 + 10
 # 4. start the App
 databricks apps deploy pramana-prod --source-code-path ./app
 ./scripts/restart_app.sh prod
+```
+
+### Required env-var cell in notebook 09
+
+When running `notebooks/09_log_and_deploy_agent.py` interactively, add this
+Python cell **after** the `%pip install ...` / `dbutils.library.restartPython()`
+cell and **before** importing `pramana.config`. `pramana.config` reads these
+values at import time, and the serving endpoint needs the same values at
+deploy time.
+
+```python
+import os
+
+os.environ["GENIE_SPACE_ID"] = ""
+os.environ["WAREHOUSE_ID"] = ""
+os.environ["PRAMANA_EXPERIMENT"] = "/Users/amaan784@gmail.com/pramana-traces"
+
+# Optional, but explicit:
+os.environ["PRAMANA_CATALOG"] = "workspace"
+os.environ["PRAMANA_SCHEMA"] = "pramana"
+os.environ["SERVING_ENDPOINT_NAME"] = "pramana-agent"
 ```
 
 After step 4 you'll have:
