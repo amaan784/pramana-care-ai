@@ -216,3 +216,13 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Databricks
+.databricks/
+*.dbc
+
+# Local data
+data/raw/*.xlsx
+data/raw/*.csv
+!data/raw/.gitkeep
+
