@@ -19,6 +19,9 @@ st.set_page_config(
 ENDPOINT = os.environ["SERVING_ENDPOINT_NAME"]
 WAREHOUSE_ID = os.environ.get("WAREHOUSE_ID")
 GENIE_SPACE_ID = os.environ.get("GENIE_SPACE_ID")
+CATALOG = os.environ.get("PRAMANA_CATALOG", "workspace")
+SCHEMA = os.environ.get("PRAMANA_SCHEMA", "pramana")
+NS = f"{CATALOG}.{SCHEMA}"
 
 w = WorkspaceClient()
 client = OpenAI(
@@ -97,7 +100,7 @@ with tab_map:
                     THEN 1 ELSE 0 END) AS n_specialty,
            AVG(latitude)  AS lat,
            AVG(longitude) AS lon
-    FROM main.pramana.gold_facilities
+    FROM {NS}.gold_facilities
     WHERE h3_6 IS NOT NULL {state_clause}
     GROUP BY h3_6
     """
@@ -141,15 +144,15 @@ with tab_audit:
     st.header("We audited our own data")
     st.caption(
         "The agent doesn't just trust the input — it scores every row against 8 rules and "
-        "exposes the breakdown. ~23% of coordinates are systematically off, concentrated in "
-        "NITI Aspirational Districts."
+        "exposes the breakdown. This snapshot has 51 cross-state coordinate mismatches "
+        "(0.51%) and 0 outside-India coordinates."
     )
 
-    audit_sql = """
-    SELECT facility_id, name, facility_type_raw, facility_type, state, district,
+    audit_sql = f"""
+    SELECT facility_id, name, facility_type_raw, facility_type, state, city,
            latitude, longitude, trust_score,
            size(flags) AS n_flags
-    FROM main.pramana.gold_facilities
+    FROM {NS}.gold_facilities
     WHERE size(flags) > 0
     ORDER BY trust_score ASC
     LIMIT 100
@@ -161,7 +164,7 @@ with tab_audit:
         st.subheader("Raw — claims & coordinates as ingested")
         if not bad.empty:
             st.dataframe(
-                bad[["facility_id", "name", "facility_type_raw", "state", "district",
+                bad[["facility_id", "name", "facility_type_raw", "state", "city",
                      "latitude", "longitude"]],
                 use_container_width=True, height=420,
             )
@@ -177,17 +180,17 @@ with tab_audit:
 
     m1, m2, m3 = st.columns(3)
     farmacy = run_sql(
-        "SELECT COUNT(*) AS n FROM main.pramana.gold_facilities WHERE facility_type_raw='farmacy'"
+        f"SELECT COUNT(*) AS n FROM {NS}.gold_facilities WHERE facility_type_raw='farmacy'"
     )
     rule_counts = run_sql(
-        "SELECT severity, COUNT(*) AS n FROM main.pramana.silver_contradictions GROUP BY severity"
+        f"SELECT severity, COUNT(*) AS n FROM {NS}.silver_contradictions GROUP BY severity"
     )
     rc = {r["severity"]: int(r["n"]) for _, r in rule_counts.iterrows()} if not rule_counts.empty else {}
 
     m1.metric("'farmacy' typo entries", int(farmacy.iloc[0]["n"]) if not farmacy.empty else 0)
     m2.metric("HIGH-severity contradictions", rc.get("HIGH", 0))
     m3.metric(
-        "Coordinate errors >1km", "23%",
-        "concentrated in 7 NITI Aspirational Districts",
+        "Cross-state coordinate mismatches", "51",
+        "0 outside India bounding box",
         delta_color="inverse",
     )

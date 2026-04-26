@@ -23,14 +23,14 @@ SELECT
     concat('name: ', coalesce(name, '')),
     concat('type: ', coalesce(facility_type, '')),
     concat('state: ', coalesce(state, '')),
-    concat('district: ', coalesce(district, '')),
+    concat('city: ', coalesce(city, '')),
     concat('specialties: ', concat_ws(', ', coalesce(specialties, array()))),
     concat('procedure: ',   concat_ws(', ', coalesce(procedure,   array()))),
     concat('equipment: ',   concat_ws(', ', coalesce(equipment,   array()))),
     concat('capability: ',  concat_ws(', ', coalesce(capability,  array()))),
     concat('description: ', coalesce(description, ''))
   ) AS facility_text,
-  name, facility_type, state, district, description
+  name, facility_type, state, city, description
 FROM {SC}
 """)
 

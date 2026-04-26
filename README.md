@@ -18,7 +18,7 @@ Mosaic AI Vector Search · Genie · Unity Catalog · Databricks Apps.
 
 ## 1. Problem
 
-The VillageFinder dataset is a useful but messy snapshot of 10,031 Indian
+The VillageFinder dataset is a useful but messy snapshot of 10,000 Indian
 healthcare facilities. NGO and government planners need to answer questions
 like *"can District Hospital Kishanganj actually perform a cardiac procedure
 tonight?"* — but the data has six known systemic bugs:
@@ -26,8 +26,8 @@ tonight?"* — but the data has six known systemic bugs:
 | Bug | Frequency | Impact |
 |---|---|---|
 | `facilityTypeId = "farmacy"` (typo of pharmacy) | 166 of 184 "pharmacies" (~90%) | Any state-level pharmacy density analysis is off by 10× |
-| Fabricated awards in `description` (`W.HO award`, `ISO 9001:2025`) | dozens | Trust-grade analytics inflated |
-| Coordinates outside India / wrong state | ~23% | Concentrated in NITI Aspirational Districts — the populations who need accuracy most are the most mis-mapped |
+| Fabricated awards in `description` (`W.HO award`, `ISO 9001:2025`) | 0 in this snapshot | Rule is armed for future ingests; the agent must not fabricate a bug |
+| Coordinates in the wrong claimed state | 51 rows (0.51%); 0 outside India | R3 catches cross-state mismatch without overstating the issue |
 | `capacity` 99% null, `numberDoctors` 94% null, `yearEstablished` 92% null | systemic | Cannot infer hospital size from structured fields alone |
 | Claimed advanced specialty (cardiac, oncology) with empty `equipment` | thousands | "Ghost capability" — the headline truth-gap pattern |
 | State distribution skewed | systemic | Per-million normalization required for honest comparison |
@@ -73,7 +73,7 @@ flowchart TD
   V -->|grounded| S[Synthesizer + Citation Grounder]
   S --> EP
 
-  subgraph Lakehouse[Unity Catalog · main.pramana]
+  subgraph Lakehouse[Unity Catalog · workspace.pramana]
     direction TB
     B[(bronze_facilities_raw<br/>10K rows · STRING PINs)] --> SC[(silver_facilities_clean<br/>typo-fixed · arrays parsed · geo-validated)]
     SC --> ST[(silver_facilities_text<br/>CDF enabled · embedding source)]
@@ -115,7 +115,7 @@ including R1-satisfied and R2-satisfied happy paths).
 
 ## 5. Data layers (Bronze → Silver → Gold)
 
-All in Unity Catalog `main.pramana`. Every column has a 1-sentence comment with
+All in Unity Catalog `workspace.pramana`. Every column has a 1-sentence comment with
 example values — Genie quality is bottlenecked on column-comment quality.
 
 | Layer | Table | What it is |
@@ -141,7 +141,7 @@ H3HexagonLayer requires strings, not the int64 form.
 |---|---|---|
 | `india_state_bbox.json` | Rule R3 + `silver_facilities_clean` validation | Detect coordinates falling in the wrong state. 35 states/UTs. |
 | `specialty_equipment.json` | Rule R7 | Map each specialty to expected equipment keywords (e.g. cardiology → ECG, echo, cath, angio). |
-| `aspirational_districts.json` | App audit metric + golden-set Q22 | The 112 NITI Aspirational Districts. Surfaces the bias finding that ~23% of bad coords concentrate in these districts. |
+| `aspirational_districts.json` | App audit metric + golden-set Q22 | The 112 NITI Aspirational Districts. Used as a partial overlay via `city` / district-HQ proxy because the source has no reliable district field. |
 | `census_state_pop.json` | Genie + golden-set Q7, Q10 | Census 2011 state populations used as denominator for "facilities per million" rankings. |
 
 ---
@@ -164,17 +164,19 @@ H3HexagonLayer requires strings, not the int64 form.
   as a LangChain tool, returning both the natural-language answer and the SQL
   Genie generated.
 
-### Tools (Unity Catalog Python functions)
+### Tools
 
-| UC name | Module | Purpose |
+| Tool | Module | Purpose |
 |---|---|---|
-| `main.pramana.search_facilities` | `tools/search.py` | Hybrid vector + BM25 search over `silver_facilities_text` (also exposed to the agent via `VectorSearchRetrieverTool` for streaming traces). |
-| `main.pramana.parse_messy_field` | `tools/parse_messy.py` | `ai_extract` over a single free-form text field; returns JSON dict of extracted attributes. |
-| `main.pramana.score_claim_consistency` | `tools/consistency.py` | Runs all 8 rules for one facility; returns trust_score + flags. |
-| `main.pramana.geo_radius` | `tools/geo.py` | Facilities within `radius_km` of `(lat, lon)`, optionally specialty-filtered. Uses `h3_kring` for coarse pre-filter then `ST_DistanceSpheroid` for exact distance. |
-| `main.pramana.cross_source_disagree` | `tools/cross_source.py` | Checks whether a free-text claim is supported by ≥2 of 6 source columns. |
+| `search_facilities` | `VectorSearchRetrieverTool` | Hybrid vector + BM25 search over `workspace.pramana.facilities_idx`. |
+| `workspace.pramana.parse_messy_field` | SQL UC function | `ai_extract` over a single free-form text field; returns JSON dict of extracted attributes. |
+| `workspace.pramana.score_claim_consistency` | SQL UC function | Returns materialized trust_score + flags for one facility. |
+| `workspace.pramana.geo_radius` | SQL UC function | Facilities within `radius_km` of `(lat, lon)`, optionally specialty-filtered. Uses `ST_DistanceSpheroid`. |
+| `workspace.pramana.cross_source_disagree` | SQL UC function | Checks whether a free-text claim is supported by ≥2 of 6 source columns. |
 
-All five are registered idempotently via `tools/registration.py` (notebook 08).
+The four UC verifier tools are registered idempotently via `tools/registration.py`
+(notebook 08). Search is not a UC Python function; it is wired directly into the
+agent as a vector retriever.
 
 ---
 

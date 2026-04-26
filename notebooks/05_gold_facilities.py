@@ -30,7 +30,7 @@ SELECT
   s.facility_type_raw,
   s.facility_type,
   s.state,
-  s.district,
+  s.city,
   s.pin,
   s.latitude,
   s.longitude,
@@ -59,7 +59,7 @@ LEFT JOIN agg   a USING (facility_id)
 COMMENTS = {
     "trust_score": "0-100 derived score: 100 - 35*HIGH - 15*MED - 5*LOW. Lower = more contradictions.",
     "flags":       "Array of struct{rule_id, severity, message, evidence, citation_column}.",
-    "h3_6":        "H3 hex id (string) at resolution 6. Use for state/district-level density maps.",
+    "h3_6":        "H3 hex id (string) at resolution 6. Use for state/city-level density maps.",
     "h3_8":        "H3 hex id (string) at resolution 8. Use for radius search and street-level maps.",
     "st_geom":     "ST_Point(longitude, latitude) for native ST_DistanceSpheroid radius queries.",
 }

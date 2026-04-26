@@ -214,12 +214,13 @@ def trust_score(flags: list[dict]) -> int:
     return max(0, 100 - (35 * h + 15 * m + 5 * l))
 
 
-def score_facility(facility_id: str) -> str:
-    """UC-callable entrypoint. Reads silver.facilities_clean for one id, returns JSON."""
+def score_claim_consistency(facility_id: str) -> str:
+    """Local/notebook entrypoint. UC uses the SQL function registered in notebook 08."""
+    from pramana.config import CATALOG, SCHEMA
     from pyspark.sql import SparkSession
     spark = SparkSession.builder.getOrCreate()
     row = spark.sql(
-        "SELECT * FROM main.pramana.silver_facilities_clean WHERE facility_id = :fid LIMIT 1",
+        f"SELECT * FROM {CATALOG}.{SCHEMA}.silver_facilities_clean WHERE facility_id = :fid LIMIT 1",
         args={"fid": facility_id},
     ).collect()
     if not row:
@@ -227,7 +228,7 @@ def score_facility(facility_id: str) -> str:
     d = row[0].asDict(recursive=True)
     try:
         bbox_rows = spark.sql(
-            "SELECT state, min_lat, max_lat, min_lon, max_lon FROM main.pramana.ref_state_bbox"
+            f"SELECT state, min_lat, max_lat, min_lon, max_lon FROM {CATALOG}.{SCHEMA}.ref_state_bbox"
         ).collect()
         bbox = {r["state"]: r.asDict() for r in bbox_rows}
     except Exception:

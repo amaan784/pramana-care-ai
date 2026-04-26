@@ -35,7 +35,7 @@ WITH base AS (
     CASE WHEN LOWER(facilityTypeId) = 'farmacy' THEN 'pharmacy'
          ELSE LOWER(facilityTypeId) END AS facility_type,
     address_stateOrRegion AS state,
-    address_district      AS district,
+    address_city          AS city,
     CAST(address_postalCode AS STRING) AS pin,
     CAST(latitude  AS DOUBLE) AS latitude,
     CAST(longitude AS DOUBLE) AS longitude,
@@ -58,7 +58,7 @@ parsed AS (
   FROM base
 )
 SELECT
-  facility_id, name, facility_type_raw, facility_type, state, district, pin,
+  facility_id, name, facility_type_raw, facility_type, state, city, pin,
   latitude, longitude, description, capacity, number_doctors, year_established,
   CASE WHEN size(specialties_fast)=0 AND specialties_raw IS NOT NULL
        THEN try_cast(ai_extract(specialties_raw, array('items'))['items'] AS array<string>)
@@ -83,11 +83,11 @@ COMMENTS = {
     "facility_type_raw": "Original facilityTypeId before typo-correction (e.g. 'farmacy').",
     "facility_type":     "Normalised type: hospital, clinic, dentist, doctor, pharmacy. 'farmacy' typo mapped to 'pharmacy'.",
     "state":             "Indian state or union territory. Example: 'Bihar', 'Tamil Nadu'.",
-    "district":          "Administrative district. Example: 'Kishanganj'.",
+    "city":              "City / district-HQ proxy from address_city. Example: 'Kishanganj'.",
     "pin":               "Postal Index Number, STRING with leading zeros preserved. Example: '855107'.",
     "latitude":          "WGS84 latitude in decimal degrees. India range 6.5–35.5.",
     "longitude":         "WGS84 longitude in decimal degrees. India range 68.0–97.5.",
-    "description":       "Free-form facility description. Known to contain fabricated awards (e.g. 'W.HO award').",
+    "description":       "Free-form facility description. R6 checks for fabricated awards (0 matches in current snapshot).",
     "capacity":          "Bed/seat capacity (INT). 99% null in source.",
     "number_doctors":    "Number of doctors (INT). 94% null in source.",
     "year_established":  "Year founded (INT). 92% null in source.",

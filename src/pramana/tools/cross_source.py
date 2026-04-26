@@ -9,11 +9,12 @@ from __future__ import annotations
 
 def cross_source_disagree(facility_id: str, claim: str) -> str:
     import json
+    from pramana.config import CATALOG, SCHEMA
     from pyspark.sql import SparkSession
     spark = SparkSession.builder.getOrCreate()
     rows = spark.sql(
         "SELECT specialties, capability, equipment, procedure, description, "
-        "capacity, number_doctors FROM main.pramana.silver_facilities_clean "
+        f"capacity, number_doctors FROM {CATALOG}.{SCHEMA}.silver_facilities_clean "
         "WHERE facility_id = :fid LIMIT 1",
         args={"fid": facility_id},
     ).collect()
