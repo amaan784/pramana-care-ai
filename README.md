@@ -73,7 +73,7 @@ flowchart TD
   V -->|grounded| S[Synthesizer + Citation Grounder]
   S --> EP
 
-  subgraph Lakehouse[Unity Catalog · main.pramana]
+  subgraph Lakehouse[Unity Catalog · workspace.pramana]
     direction TB
     B[(bronze_facilities_raw<br/>10K rows · STRING PINs)] --> SC[(silver_facilities_clean<br/>typo-fixed · arrays parsed · geo-validated)]
     SC --> ST[(silver_facilities_text<br/>CDF enabled · embedding source)]
@@ -115,8 +115,10 @@ including R1-satisfied and R2-satisfied happy paths).
 
 ## 5. Data layers (Bronze → Silver → Gold)
 
-All in Unity Catalog `main.pramana`. Every column has a 1-sentence comment with
-example values — Genie quality is bottlenecked on column-comment quality.
+All in Unity Catalog `workspace.pramana` by default (Free Edition). Override
+with the `PRAMANA_CATALOG` / `PRAMANA_SCHEMA` env vars or the `catalog` / `schema`
+bundle variables in `databricks.yml`. Every column has a 1-sentence comment
+with example values — Genie quality is bottlenecked on column-comment quality.
 
 | Layer | Table | What it is |
 |---|---|---|
@@ -166,13 +168,15 @@ H3HexagonLayer requires strings, not the int64 form.
 
 ### Tools (Unity Catalog Python functions)
 
+All UC names below are written as `<catalog>.<schema>.<func>`; defaults are `workspace.pramana.*`.
+
 | UC name | Module | Purpose |
 |---|---|---|
-| `main.pramana.search_facilities` | `tools/search.py` | Hybrid vector + BM25 search over `silver_facilities_text` (also exposed to the agent via `VectorSearchRetrieverTool` for streaming traces). |
-| `main.pramana.parse_messy_field` | `tools/parse_messy.py` | `ai_extract` over a single free-form text field; returns JSON dict of extracted attributes. |
-| `main.pramana.score_claim_consistency` | `tools/consistency.py` | Runs all 8 rules for one facility; returns trust_score + flags. |
-| `main.pramana.geo_radius` | `tools/geo.py` | Facilities within `radius_km` of `(lat, lon)`, optionally specialty-filtered. Uses `h3_kring` for coarse pre-filter then `ST_DistanceSpheroid` for exact distance. |
-| `main.pramana.cross_source_disagree` | `tools/cross_source.py` | Checks whether a free-text claim is supported by ≥2 of 6 source columns. |
+| `workspace.pramana.search_facilities` | `tools/search.py` | Hybrid vector + BM25 search over `silver_facilities_text` (also exposed to the agent via `VectorSearchRetrieverTool` for streaming traces). |
+| `workspace.pramana.parse_messy_field` | `tools/parse_messy.py` | `ai_extract` over a single free-form text field; returns JSON dict of extracted attributes. |
+| `workspace.pramana.score_claim_consistency` | `tools/consistency.py` | Runs all 8 rules for one facility; returns trust_score + flags. |
+| `workspace.pramana.geo_radius` | `tools/geo.py` | Facilities within `radius_km` of `(lat, lon)`, optionally specialty-filtered. Uses `h3_kring` for coarse pre-filter then `ST_DistanceSpheroid` for exact distance. |
+| `workspace.pramana.cross_source_disagree` | `tools/cross_source.py` | Checks whether a free-text claim is supported by ≥2 of 6 source columns. |
 
 All five are registered idempotently via `tools/registration.py` (notebook 08).
 
@@ -296,7 +300,7 @@ prints the per-metric delta table.
 ```bash
 # 0. one-time: drop the Excel into a UC volume
 databricks fs cp data/raw/VF_Hackathon_Dataset_India_Large.xlsx \
-    dbfs:/Volumes/main/pramana/raw/
+    dbfs:/Volumes/workspace/pramana/raw/
 
 # 1. validate + deploy bundle to prod
 databricks bundle validate -t prod

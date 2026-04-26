@@ -1,6 +1,8 @@
 """Geo radius search powered by H3 + ST_DistanceSpheroid (no Mosaic library)."""
 from __future__ import annotations
 
+from pramana.config import CATALOG, SCHEMA
+
 
 def geo_radius(lat: float, lon: float, radius_km: float = 50.0,
                specialty: str = "", limit: int = 50) -> str:
@@ -37,7 +39,7 @@ def geo_radius(lat: float, lon: float, radius_km: float = 50.0,
         ST_Point(longitude, latitude)
       ) / 1000.0 AS distance_km,
       specialties
-    FROM main.pramana.gold_facilities
+    FROM {CATALOG}.{SCHEMA}.gold_facilities
     WHERE h3_8 IN (SELECT hex FROM ring)
       {spec_clause}
     HAVING distance_km <= {float(radius_km)}

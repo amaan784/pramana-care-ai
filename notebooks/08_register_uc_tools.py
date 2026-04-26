@@ -10,7 +10,10 @@
 # COMMAND ----------
 import sys
 sys.path.insert(0, "../src")
+from pramana.config import CATALOG, SCHEMA
 from pramana.tools.registration import register_all
+
+NS = f"{CATALOG}.{SCHEMA}"
 
 created = register_all()
 for f in created:
@@ -19,19 +22,19 @@ for f in created:
 # COMMAND ----------
 # Smoke test each one
 import json
-sample = spark.sql("SELECT facility_id FROM main.pramana.gold_facilities ORDER BY trust_score ASC LIMIT 1").collect()[0][0]
+sample = spark.sql(f"SELECT facility_id FROM {NS}.gold_facilities ORDER BY trust_score ASC LIMIT 1").collect()[0][0]
 
 print("score_claim_consistency:")
-print(spark.sql(f"SELECT main.pramana.score_claim_consistency('{sample}') AS r").collect()[0][0][:600])
+print(spark.sql(f"SELECT {NS}.score_claim_consistency('{sample}') AS r").collect()[0][0][:600])
 
 print("\ncross_source_disagree:")
-print(spark.sql(f"SELECT main.pramana.cross_source_disagree('{sample}', 'cardiac surgery icu') AS r").collect()[0][0][:600])
+print(spark.sql(f"SELECT {NS}.cross_source_disagree('{sample}', 'cardiac surgery icu') AS r").collect()[0][0][:600])
 
 print("\ngeo_radius:")
-print(spark.sql("SELECT main.pramana.geo_radius(25.59, 85.13, 25.0, 'cardiology', 5) AS r").collect()[0][0][:600])
+print(spark.sql(f"SELECT {NS}.geo_radius(25.59, 85.13, 25.0, 'cardiology', 5) AS r").collect()[0][0][:600])
 
 print("\nparse_messy_field:")
-print(spark.sql("SELECT main.pramana.parse_messy_field('24x7 emergency, ICU, MRI, Dr. Sharma cardiology, W.HO award 2019') AS r").collect()[0][0][:600])
+print(spark.sql(f"SELECT {NS}.parse_messy_field('24x7 emergency, ICU, MRI, Dr. Sharma cardiology, W.HO award 2019') AS r").collect()[0][0][:600])
 
 print("\nsearch_facilities:")
-print(spark.sql("SELECT main.pramana.search_facilities('cardiac surgery cath lab Bihar', 5) AS r").collect()[0][0][:600])
+print(spark.sql(f"SELECT {NS}.search_facilities('cardiac surgery cath lab Bihar', 5) AS r").collect()[0][0][:600])

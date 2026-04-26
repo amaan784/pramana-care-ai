@@ -6,15 +6,17 @@ description text, capability array, capacity/doctors fill-rate).
 """
 from __future__ import annotations
 
+from pramana.config import CATALOG, SCHEMA
+
 
 def cross_source_disagree(facility_id: str, claim: str) -> str:
     import json
     from pyspark.sql import SparkSession
     spark = SparkSession.builder.getOrCreate()
     rows = spark.sql(
-        "SELECT specialties, capability, equipment, procedure, description, "
-        "capacity, number_doctors FROM main.pramana.silver_facilities_clean "
-        "WHERE facility_id = :fid LIMIT 1",
+        f"SELECT specialties, capability, equipment, procedure, description, "
+        f"capacity, number_doctors FROM {CATALOG}.{SCHEMA}.silver_facilities_clean "
+        f"WHERE facility_id = :fid LIMIT 1",
         args={"fid": facility_id},
     ).collect()
     if not rows:

@@ -7,7 +7,8 @@ service-principal gymnastics, so we drive this once by hand.
 
 1. **Workspace → Genie → New space**.
 2. **Name:** `pramana_facilities`.
-3. **Add tables:** `main.pramana.gold_facilities`, `main.pramana.silver_contradictions`, `main.pramana.silver_claims_long`.
+3. **Add tables:** `workspace.pramana.gold_facilities`, `workspace.pramana.silver_contradictions`, `workspace.pramana.silver_claims_long`.
+   (Replace `workspace` with whatever catalog you set via `databricks.yml` / `PRAMANA_CATALOG`.)
 4. **Warehouse:** the 2X-Small serverless SQL warehouse used by the bundle.
 5. **Instructions** (paste verbatim):
 
@@ -17,30 +18,30 @@ service-principal gymnastics, so we drive this once by hand.
 
 ```sql
 -- Q1: How many facilities per state, ranked.
-SELECT state, COUNT(*) AS n FROM main.pramana.gold_facilities
+SELECT state, COUNT(*) AS n FROM workspace.pramana.gold_facilities
 GROUP BY state ORDER BY n DESC;
 
 -- Q2: How many entries had the 'farmacy' typo?
-SELECT facility_type_raw, COUNT(*) AS n FROM main.pramana.gold_facilities
+SELECT facility_type_raw, COUNT(*) AS n FROM workspace.pramana.gold_facilities
 WHERE facility_type_raw = 'farmacy' GROUP BY 1;
 
 -- Q3: Cities with zero oncology coverage in a state (city ≈ district HQ).
 WITH onc AS (
-  SELECT DISTINCT city FROM main.pramana.gold_facilities
+  SELECT DISTINCT city FROM workspace.pramana.gold_facilities
   WHERE exists(specialties, x -> contains(lower(x), 'oncolog'))
 )
-SELECT DISTINCT city FROM main.pramana.gold_facilities
+SELECT DISTINCT city FROM workspace.pramana.gold_facilities
 WHERE city NOT IN (SELECT city FROM onc) AND state = 'Bihar';
 
 -- Q4: Lowest-trust hospitals.
 SELECT facility_id, name, state, city, trust_score
-FROM main.pramana.gold_facilities
+FROM workspace.pramana.gold_facilities
 WHERE facility_type = 'hospital'
 ORDER BY trust_score ASC LIMIT 25;
 
 -- Q5: Counts per contradiction rule and severity.
 SELECT rule_id, severity, COUNT(*) AS n
-FROM main.pramana.silver_contradictions
+FROM workspace.pramana.silver_contradictions
 GROUP BY rule_id, severity ORDER BY rule_id, severity;
 ```
 

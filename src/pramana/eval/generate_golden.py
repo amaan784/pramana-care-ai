@@ -5,8 +5,10 @@ from pathlib import Path
 
 import pandas as pd
 
+from pramana.config import SOURCE_TEXT_TABLE
 
-def seed_from_corpus(text_table: str = "main.pramana.silver_facilities_text",
+
+def seed_from_corpus(text_table: str = SOURCE_TEXT_TABLE,
                       n: int = 15) -> pd.DataFrame:
     from pyspark.sql import SparkSession
     from databricks.agents.evals import generate_evals_df
