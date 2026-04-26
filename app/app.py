@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -858,6 +859,14 @@ def _coerce_array(val) -> list[str]:
                 return [str(x) for x in parsed if x is not None]
         except (ValueError, TypeError):
             pass
+        quoted = re.findall(r"""['"]([^'"]+)['"]""", s)
+        if quoted:
+            return quoted
+        if s.startswith("[") and s.endswith("]"):
+            inner = s[1:-1].strip()
+            if not inner:
+                return []
+            return [x.strip() for x in re.split(r"\s*[,|]\s*", inner) if x.strip()]
         return [s]
     return [str(val)]
 
@@ -1165,6 +1174,22 @@ QUERY_PRESETS = {
 }
 
 
+_AGENT_SPECIALTY_KEYWORDS = {
+    "dialysis": ["dialysis", "nephrology", "hemodialysis"],
+    "generalsurgery": ["generalsurgery", "general surgery", "surgery", "appendectomy", "laparoscopic"],
+    "radiationoncology": ["radiationoncology", "radiation", "radiotherapy", "oncology", "cancer"],
+    "trauma": ["trauma", "emergency", "criticalcare", "critical care"],
+    "interventionalcardiology": ["interventionalcardiology", "cardiology", "cardiac", "angioplasty", "cath"],
+    "obstetrics": ["obstetrics", "gynecology", "maternity", "delivery", "pregnancy"],
+    "generalmedicine": ["generalmedicine", "general medicine", "familymedicine", "family medicine"],
+}
+
+
+def _specialty_keywords(specialty: str) -> list[str]:
+    key = re.sub(r"[^a-z0-9]+", "", specialty.lower())
+    return _AGENT_SPECIALTY_KEYWORDS.get(key, [specialty.lower()])
+
+
 def agent_plan(query, lat, lon, specialty_hint):
     return [
         {"name": "Planner",   "detail": "Decompose query into (specialty, geography, urgency, trust threshold).",
@@ -1189,22 +1214,23 @@ def agent_plan(query, lat, lon, specialty_hint):
 def agent_pick(facilities: list[Facility], specialty: str, lat: float, lon: float, k: int = 5):
     if not facilities:
         return []
-    spec = specialty.lower()
+    keywords = _specialty_keywords(specialty)
     scored = []
     for f in facilities:
         spec_match = 0.0
-        if any(spec in s.lower() for s in f.specialties):
+        if any(any(kw in s.lower() for kw in keywords) for s in f.specialties):
             spec_match = 1.0
-        elif any(spec in c.lower() for c in f.capabilities):
+        elif any(any(kw in c.lower() for kw in keywords) for c in f.capabilities):
             spec_match = 0.7
-        elif any(spec in e.lower() for e in f.equipment):
+        elif any(any(kw in e.lower() for kw in keywords) for e in f.equipment):
             spec_match = 0.5
         if spec_match == 0.0:
             continue
         d = haversine_km(lat, lon, f.lat, f.lon)
         if d > 1500:
             continue
-        score = 0.45 * f.trust_score + 0.35 * spec_match - 0.20 * min(1.0, d / 1500.0)
+        type_bonus = 0.05 if f.facility_type.lower() == "hospital" else 0.0
+        score = 0.45 * f.trust_score + 0.35 * spec_match + type_bonus - 0.20 * min(1.0, d / 1500.0)
         scored.append((f, d, score))
     scored.sort(key=lambda x: x[2], reverse=True)
     return [(f, d) for f, d, _ in scored[:k]]
@@ -1776,8 +1802,8 @@ with tab_audit:
     st.header("We audited our own data")
     st.caption(
         "The agent doesn't just trust the input — it scores every row against 8 rules and "
-        "exposes the breakdown. ~23% of coordinates are systematically off, concentrated in "
-        "NITI Aspirational Districts."
+        "exposes the breakdown. Coordinate issues are surfaced as R3 flags when a point falls "
+        "outside India or outside the claimed state."
     )
 
     audit_sql = f"""
@@ -1817,12 +1843,23 @@ with tab_audit:
     rule_counts = run_sql(
         f"SELECT severity, COUNT(*) AS n FROM {NS}.silver_contradictions GROUP BY severity"
     )
+    coord_flags = run_sql(f"""
+        SELECT COUNT(*) AS n_total,
+               SUM(CASE WHEN exists(flags, f -> f.rule_id = 'R3') THEN 1 ELSE 0 END) AS n_coord_flags
+        FROM {NS}.gold_facilities
+    """)
     rc = {r["severity"]: int(r["n"]) for _, r in rule_counts.iterrows()} if not rule_counts.empty else {}
+    if coord_flags.empty:
+        n_total, n_coord = 0, 0
+    else:
+        n_total = int(float(coord_flags.iloc[0].get("n_total") or 0))
+        n_coord = int(float(coord_flags.iloc[0].get("n_coord_flags") or 0))
+    coord_pct = (100.0 * n_coord / n_total) if n_total else 0.0
 
     m1.metric("'farmacy' typo entries", int(farmacy.iloc[0]["n"]) if not farmacy.empty else 0)
     m2.metric("HIGH-severity contradictions", rc.get("HIGH", 0))
     m3.metric(
-        "Coordinate errors >1km", "23%",
-        "concentrated in 7 NITI Aspirational Districts",
+        "Coordinate/state flags", f"{coord_pct:.2f}%",
+        f"{n_coord:,} facilities flagged by R3",
         delta_color="inverse",
     )
