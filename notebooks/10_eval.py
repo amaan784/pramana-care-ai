@@ -9,6 +9,14 @@
 # MAGIC dbutils.library.restartPython()
 
 # COMMAND ----------
+import os
+
+os.environ["PRAMANA_EXPERIMENT"] = "/Users/amaan784@gmail.com/pramana-traces"
+os.environ["PRAMANA_CATALOG"] = "workspace"
+os.environ["PRAMANA_SCHEMA"] = "pramana"
+os.environ["SERVING_ENDPOINT_NAME"] = "pramana-agent"
+
+# COMMAND ----------
 import sys, json, mlflow, pandas as pd
 sys.path.insert(0, "../src")
 from pathlib import Path
@@ -26,6 +34,23 @@ mlflow.set_experiment(EXPERIMENT_PATH)
 seed = seed_from_corpus(n=10)
 golden = merge_with_handwritten(seed, "../eval/golden_questions.jsonl")
 golden = golden.head(25).reset_index(drop=True)
+
+# mlflow.genai.evaluate maps dataframe columns to predict_fn arguments. Our
+# predict_fns take `question: str`, so guarantee a `question` column even when
+# generated seed rows use the `inputs` shape.
+if "question" not in golden.columns:
+    if "inputs" in golden.columns:
+        golden["question"] = golden["inputs"].apply(
+            lambda x: x.get("question") if isinstance(x, dict) else x
+        )
+    elif "input" in golden.columns:
+        golden["question"] = golden["input"]
+    elif "request" in golden.columns:
+        golden["question"] = golden["request"]
+    else:
+        raise ValueError(f"No question-like column found. Columns: {list(golden.columns)}")
+golden = golden[golden["question"].notna()].reset_index(drop=True)
+
 print(f"golden rows: {len(golden)}")
 display(golden.head(5))
 
@@ -40,9 +65,32 @@ def baseline_predict_fn(question: str) -> str:
 # COMMAND ----------
 from databricks.sdk import WorkspaceClient
 from openai import OpenAI
+
 w = WorkspaceClient()
-client = OpenAI(api_key=w.config.oauth_token().access_token,
-                base_url=f"{w.config.host}/serving-endpoints")
+
+token = None
+
+# PAT / configured token, if available
+try:
+    token = w.config.token
+except Exception:
+    token = None
+
+# Notebook context token fallback
+if not token:
+    token = (
+        dbutils.notebook.entry_point
+        .getDbutils()
+        .notebook()
+        .getContext()
+        .apiToken()
+        .get()
+    )
+
+client = OpenAI(
+    api_key=token,
+    base_url=f"{w.config.host}/serving-endpoints",
+)
 
 def pramana_predict_fn(question: str) -> str:
     r = client.chat.completions.create(
